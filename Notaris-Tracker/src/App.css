@@ -1,0 +1,119 @@
+:root {
+  --nd-bg: #f8f9fa;
+  --nd-surface: #ffffff;
+  --nd-border: #f3f4f6;
+  --nd-input-border: #e5e7eb;
+  --nd-text: #0f172a;
+  --nd-muted: #64748b;
+  --nd-placeholder: #94a3b8;
+  --nd-primary: #10b981;
+  --nd-primary-dark: #059669;
+  --nd-primary-soft: #ecfdf5;
+  --nd-danger: #dc2626;
+  --nd-danger-soft: #fef2f2;
+  --nd-warning: #f59e0b;
+  --nd-purple: #7c3aed;
+  --nd-radius-control: 12px;
+  --nd-radius-card: 16px;
+  --nd-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  --nd-sidebar-width: 18rem;
+  --nd-header-height: 4.5rem;
+
+  --sidebar-width: var(--nd-sidebar-width);
+  --topbar-height: var(--nd-header-height);
+  --footer-height: 60px;
+}
+
+.nd-card {
+  background: var(--nd-surface);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--nd-radius-card);
+  box-shadow: var(--nd-shadow);
+}
+
+.nd-control {
+  min-height: 44px;
+  border: 1px solid var(--nd-input-border);
+  border-radius: var(--nd-radius-control);
+  background: #fff;
+}
+
+.nd-control:focus-visible {
+  border-color: var(--nd-primary);
+  outline: 3px solid rgb(16 185 129 / 16%);
+  outline-offset: 1px;
+}
+
+.nd-button-primary {
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--nd-radius-control);
+  background: var(--nd-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.nd-button-primary:hover { background: var(--nd-primary-dark); }
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f9f9ff;
+  overflow: hidden; /* Prevent body scroll, we use internal scroll */
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Scrollbar Styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #bbcabf;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6c7a71;
+}
+
+/* Typography fix */
+.material-symbols-outlined {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+/* Table responsiveness fix */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-container table {
+  min-width: 1000px; /* Increased to accommodate all columns comfortably */
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0, 0, 0.2, 1) forwards;
+}
