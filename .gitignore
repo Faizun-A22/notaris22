@@ -1,0 +1,13 @@
+# Database dumps & backup files
+*.backup
+*.backup.gz
+restore_clean_for_new_supabase.sql
+build_script.py
+
+# Environment variables
+.env
+.env.*
+
+# Build & dependencies
+node_modules/
+dist/
