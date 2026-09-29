@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCases } from '../../hooks/useCases';
 import { getDefaultChecklist } from '../../contexts/CasesContext';
 import { uploadDocumentFile } from '../../lib/storage';
+import { LocationSearchInput } from '../../components/common/LocationSearchInput';
 import toast from 'react-hot-toast';
 
 const formatNumberWithDots = (num) => {
@@ -213,9 +214,12 @@ export const CreateDocumentPage = () => {
     }
   };
 
-  // Step 6: Catatan
+  // Step 6: Catatan & State Loading/Modal
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [savedDraftData, setSavedDraftData] = useState(null);
 
   // Initialize and update checklist based on Service Type
   useEffect(() => {
@@ -326,6 +330,28 @@ export const CreateDocumentPage = () => {
   };
 
   // Navigation Validations
+  const isCurrentStepValid = useMemo(() => {
+    switch (step) {
+      case 1:
+        return clientName.trim() !== '' && clientEmail.trim().includes('@') && clientPhone.trim().length >= 8;
+      case 2:
+        return true;
+      case 3:
+        return propertyLocation.trim() !== '' && Number(transactionValue) > 0;
+      case 4:
+        return !Object.values(uploads).some(u => u.status === 'uploading' || u.status === 'failed');
+      case 5:
+        if (!entryDate) return false;
+        if (hasEstimationDate && (!estimationDate || new Date(estimationDate) < new Date(entryDate))) return false;
+        if (fees < 0 || paidAmount < 0 || paidAmount > fees) return false;
+        return true;
+      case 6:
+        return true;
+      default:
+        return true;
+    }
+  }, [step, clientName, clientEmail, clientPhone, propertyLocation, transactionValue, uploads, entryDate, hasEstimationDate, estimationDate, fees, paidAmount]);
+
   const validateStep = (currentStep) => {
     switch (currentStep) {
       case 1:
@@ -343,7 +369,7 @@ export const CreateDocumentPage = () => {
         }
         return true;
       case 2:
-        return true; // Category and type are dropdowns/radios and always have defaults
+        return true;
       case 3:
         if (!propertyLocation.trim()) {
           toast.error('Lokasi objek akta wajib diisi!');
@@ -355,7 +381,6 @@ export const CreateDocumentPage = () => {
         }
         return true;
       case 4:
-        // Ensure no active uploads are failing or in progress
         const inProgress = Object.values(uploads).some(u => u.status === 'uploading');
         if (inProgress) {
           toast.error('Harap tunggu sampai semua upload file selesai!');
@@ -400,61 +425,60 @@ export const CreateDocumentPage = () => {
   };
 
   // Submit and Draft handlers
-  const handleSaveDraft = () => {
-    if (!clientName.trim()) {
-      toast.error('Nama klien minimal harus diisi untuk menyimpan draf!');
-      return;
-    }
+  const handleSaveDraft = async () => {
+    const finalClientName = clientName.trim() || 'Draf Berkas (Tanpa Nama)';
 
+    setSavingDraft(true);
     setLoading(true);
     const mappedService = mapServiceTypeToAbbreviation(serviceType);
 
-    setTimeout(async () => {
-      // Build final checklist based on uploads
-      const finalChecklist = checklist.map(item => {
-        const fileRecord = uploads[item.id];
-        if (fileRecord && fileRecord.status === 'success') {
-          return {
-            ...item,
-            status: 'Perlu Verifikasi',
-            fileName: fileRecord.name,
-            fileSize: fileRecord.size,
-            fileUrl: fileRecord.url || fileRecord.previewUrl || null
-          };
-        }
-        return item;
+    // Build final checklist based on uploads
+    const finalChecklist = checklist.map(item => {
+      const fileRecord = uploads[item.id];
+      if (fileRecord && fileRecord.status === 'success') {
+        return {
+          ...item,
+          status: 'Perlu Verifikasi',
+          fileName: fileRecord.name,
+          fileSize: fileRecord.size,
+          fileUrl: fileRecord.url || fileRecord.previewUrl || null
+        };
+      }
+      return item;
+    });
+
+    try {
+      const savedCase = await addCase({
+        clientName: finalClientName,
+        clientEmail: clientEmail.trim() || 'draft@notaris.com',
+        clientPhone: clientPhone.trim() || '-',
+        serviceType: mappedService,
+        category,
+        propertyLocation: propertyLocation.trim() || 'Jakarta Selatan',
+        transactionValue: transactionValue ? Number(transactionValue) : 0,
+        bankPartner: bankPartner || 'Tidak Ada',
+        estimationDate: hasEstimationDate ? estimationDate : null,
+        entryDate: entryDate || getTodayDateString(),
+        notes: notes || 'Draf berkas terdaftar.',
+        checklist: finalChecklist,
+        status: 'Pemeriksaan Dokumen',
+        isDraft: true,
+        fees: Number(fees) || 0,
+        paymentStatus,
+        paidAmount: Number(paidAmount) || 0
       });
 
-      try {
-        await addCase({
-          clientName,
-          clientEmail,
-          clientPhone,
-          serviceType: mappedService,
-          category,
-          propertyLocation,
-          transactionValue: transactionValue ? Number(transactionValue) : 0,
-          bankPartner: bankPartner || 'Tidak Ada',
-          estimationDate: hasEstimationDate ? estimationDate : null,
-          entryDate,
-          notes: notes || 'Draf berkas terdaftar.',
-          checklist: finalChecklist,
-          status: 'Pemeriksaan Dokumen',
-          isDraft: true,
-          fees: Number(fees),
-          paymentStatus,
-          paidAmount: Number(paidAmount)
-        });
-
-        setLoading(false);
-        toast.success('Draf berkas berhasil disimpan!');
-        navigate('/staff/dashboard');
-      } catch (err) {
-        console.error(err);
-        setLoading(false);
-        toast.error('Gagal menyimpan draf berkas!');
-      }
-    }, 1000);
+      setLoading(false);
+      setSavingDraft(false);
+      setSavedDraftData(savedCase || { id: '', clientName: finalClientName, caseNumber: 'DRAF' });
+      setShowDraftModal(true);
+      toast.success('Draf berkas berhasil disimpan!');
+    } catch (err) {
+      console.error('Save draft error:', err);
+      setLoading(false);
+      setSavingDraft(false);
+      toast.error('Gagal menyimpan draf berkas: ' + (err.message || ''));
+    }
   };
 
   const handleSubmit = (e) => {
@@ -557,12 +581,12 @@ export const CreateDocumentPage = () => {
       </div>
 
       {/* Stepper Wizard Indicator */}
-      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-5 mb-8 shadow-sm select-none">
+      <div className="bg-white rounded-[26px] border border-slate-200/80 p-5 mb-8 shadow-[0_10px_30px_rgba(112,144,176,0.06)] select-none">
         <div className="flex justify-between items-center relative">
           {/* Connector Line */}
-          <div className="absolute left-[3%] right-[3%] top-[35%] h-[2px] bg-outline-variant/60 -z-0">
+          <div className="absolute left-[3%] right-[3%] top-[35%] h-[2px] bg-slate-200 -z-0">
             <div 
-              className="h-full bg-primary transition-all duration-300"
+              className="h-full bg-[#6366F1] transition-all duration-300"
               style={{ width: `${((step - 1) / 5) * 100}%` }}
             ></div>
           </div>
@@ -575,12 +599,12 @@ export const CreateDocumentPage = () => {
             return (
               <div key={idx} className="flex flex-col items-center z-10 w-[15%] text-center">
                 <div 
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                     isCompleted 
-                      ? 'bg-primary text-white shadow-sm' 
+                      ? 'bg-gradient-to-tr from-[#10B981] to-[#34D399] text-white shadow-[0_4px_12px_rgba(16,185,129,0.35)]' 
                       : isActive 
-                      ? 'bg-primary-soft text-primary ring-2 ring-primary ring-offset-2 font-bold' 
-                      : 'bg-surface-container border border-outline-variant text-on-surface-variant'
+                      ? 'bg-gradient-to-tr from-[#6366F1] to-[#8B5CF6] text-white shadow-[0_6px_16px_rgba(99,102,241,0.35)] font-bold scale-105' 
+                      : 'bg-[#F8FAFC] border border-slate-200 text-slate-400'
                   }`}
                 >
                   {isCompleted ? (
@@ -589,7 +613,7 @@ export const CreateDocumentPage = () => {
                     <span className="material-symbols-outlined text-[20px]">{s.icon}</span>
                   )}
                 </div>
-                <span className={`text-[10px] mt-2 font-bold uppercase tracking-wider hidden sm:block ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>
+                <span className={`text-[10px] mt-2 font-bold uppercase tracking-wider hidden sm:block ${isActive ? 'text-[#6366F1]' : 'text-slate-400'}`}>
                   {s.label}
                 </span>
               </div>
@@ -599,7 +623,7 @@ export const CreateDocumentPage = () => {
       </div>
 
       {/* Form Content Card */}
-      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-8 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] min-h-[400px]">
+      <div className="bg-white rounded-[28px] border border-slate-200/80 p-6 sm:p-8 shadow-[0_12px_35px_rgba(112,144,176,0.06)] min-h-[400px]">
         
         {/* STEP 1: DATA KLIEN */}
         {step === 1 && (
@@ -617,7 +641,6 @@ export const CreateDocumentPage = () => {
                 <input
                   id="client_name"
                   type="text"
-                  required
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   placeholder="Masukkan nama lengkap klien sesuai KTP"
@@ -636,7 +659,6 @@ export const CreateDocumentPage = () => {
                   <input
                     id="client_email"
                     type="email"
-                    required
                     value={clientEmail}
                     onChange={(e) => setClientEmail(e.target.value)}
                     placeholder="nama@email.com"
@@ -654,7 +676,6 @@ export const CreateDocumentPage = () => {
                   <input
                     id="client_phone"
                     type="tel"
-                    required
                     value={clientPhone}
                     onChange={(e) => setClientPhone(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="Contoh: 081234567890"
@@ -759,18 +780,12 @@ export const CreateDocumentPage = () => {
               <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider" htmlFor="property_location">
                 Alamat / Lokasi Objek <span className="text-error">*</span>
               </label>
-              <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px]">location_on</span>
-                <input
-                  id="property_location"
-                  type="text"
-                  required
-                  value={propertyLocation}
-                  onChange={(e) => setPropertyLocation(e.target.value)}
-                  placeholder="Contoh: Jl. Diponegoro No. 45, Kebayoran Baru, Jakarta Selatan"
-                  className="w-full pl-11 pr-4 py-3 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface placeholder:text-outline transition-all focus:outline-none focus:border-primary focus:border-2"
-                />
-              </div>
+              <LocationSearchInput
+                id="property_location"
+                value={propertyLocation}
+                onChange={setPropertyLocation}
+                placeholder="Ketik nama tempat/kafe/alamat (contoh: Cafe Koa, Jl. Sudirman)..."
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -782,7 +797,6 @@ export const CreateDocumentPage = () => {
                   <span className="absolute left-3.5 font-bold text-[13px] text-on-surface-variant">Rp</span>
                   <CurrencyInput
                     id="transaction_value"
-                    required
                     value={transactionValue}
                     onChange={setTransactionValue}
                     placeholder="Contoh: 150.000.000"
@@ -959,7 +973,6 @@ export const CreateDocumentPage = () => {
                   <input
                     id="entry_date"
                     type="date"
-                    required
                     value={entryDate}
                     onChange={(e) => setEntryDate(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface transition-all focus:outline-none focus:border-primary focus:border-2"
@@ -999,7 +1012,6 @@ export const CreateDocumentPage = () => {
                     <input
                       id="estimation_date"
                       type="date"
-                      required={hasEstimationDate}
                       value={estimationDate}
                       onChange={(e) => setEstimationDate(e.target.value)}
                       className="w-full pl-11 pr-4 py-3 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface transition-all focus:outline-none focus:border-primary focus:border-2"
@@ -1033,7 +1045,6 @@ export const CreateDocumentPage = () => {
                     <span className="absolute left-3.5 text-on-surface-variant text-[13px] font-bold">Rp</span>
                     <CurrencyInput
                       id="fees"
-                      required
                       value={fees}
                       onChange={handleFeesChange}
                       className="w-full pl-10 pr-4 py-3 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface font-semibold focus:outline-none focus:border-primary focus:border-2"
@@ -1120,7 +1131,7 @@ export const CreateDocumentPage = () => {
             <button
               type="button"
               onClick={handlePrev}
-              className="px-5 py-2.5 border border-outline-variant rounded-xl font-bold text-[12.5px] text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors flex items-center gap-1.5"
+              className="px-5 py-2.5 border border-slate-200 bg-white rounded-2xl font-bold text-[12.5px] text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-xs"
             >
               <span className="material-symbols-outlined text-[16px]">arrow_back</span>
               Kembali
@@ -1132,30 +1143,48 @@ export const CreateDocumentPage = () => {
           <button
             type="button"
             onClick={handleSaveDraft}
-            disabled={loading}
-            className="px-5 py-2.5 border border-primary text-primary rounded-xl font-bold text-[12.5px] hover:bg-primary-soft transition-colors flex items-center gap-1.5"
+            disabled={loading || savingDraft}
+            className="px-5 py-2.5 border border-[#6366F1] text-[#6366F1] bg-indigo-50/50 rounded-2xl font-bold text-[12.5px] hover:bg-indigo-50 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-[16px]">draft</span>
-            Simpan Draf
+            {savingDraft ? (
+              <>
+                <span className="material-symbols-outlined animate-spin text-[16px]">refresh</span>
+                <span>Menyimpan Draf...</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[16px]">draft</span>
+                <span>Simpan Draf</span>
+              </>
+            )}
           </button>
 
           {step < 6 ? (
             <button
               type="button"
               onClick={handleNext}
-              className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-[12.5px] hover:opacity-90 shadow-md flex items-center gap-1.5 transition-all active:scale-[0.97]"
+              disabled={!isCurrentStepValid}
+              className={`px-6 py-2.5 rounded-2xl font-bold text-[12.5px] flex items-center gap-1.5 transition-all ${
+                isCurrentStepValid 
+                  ? 'btn-primary-3d cursor-pointer' 
+                  : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60 shadow-none'
+              }`}
             >
-              Lanjutkan
+              <span>Lanjutkan</span>
               <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading}
-              className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-[12.5px] hover:opacity-90 shadow-md flex items-center gap-1.5 transition-all active:scale-[0.97] disabled:opacity-50"
+              disabled={loading || !isCurrentStepValid}
+              className={`px-6 py-2.5 rounded-2xl font-bold text-[12.5px] flex items-center gap-1.5 transition-all ${
+                isCurrentStepValid && !loading 
+                  ? 'btn-primary-3d cursor-pointer' 
+                  : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60 shadow-none'
+              }`}
             >
-              {loading ? (
+              {loading && !savingDraft ? (
                 <>
                   <span className="material-symbols-outlined animate-spin text-[16px]">refresh</span>
                   <span>Menerbitkan...</span>
@@ -1170,6 +1199,50 @@ export const CreateDocumentPage = () => {
           )}
         </div>
       </div>
+
+      {/* POPUP MODAL: DRAF BERHASIL DISIMPAN */}
+      {showDraftModal && savedDraftData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-slate-100 text-center relative animate-in zoom-in-95 duration-200">
+            {/* Top Icon Badge */}
+            <div className="w-16 h-16 bg-indigo-50 border-2 border-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4 text-[#6366F1]">
+              <span className="material-symbols-outlined text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                draft
+              </span>
+            </div>
+
+            <h3 className="text-[20px] font-extrabold text-slate-800 mb-2">
+              Draf Berkas Berhasil Disimpan!
+            </h3>
+
+            <p className="text-[13px] text-slate-600 mb-6 leading-relaxed">
+              Berkas atas nama <strong className="text-slate-900">{savedDraftData.clientName}</strong> {savedDraftData.caseNumber ? `(#${savedDraftData.caseNumber})` : ''} telah tersimpan sebagai draf. Anda dapat melanjutkan pengisian dan menerbitkannya kapan saja.
+            </p>
+
+            <div className="space-y-3">
+              {savedDraftData.id && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/staff/document/${savedDraftData.id}`)}
+                  className="w-full py-3 bg-[#6366F1] hover:bg-indigo-600 text-white rounded-xl font-bold text-[13px] transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">visibility</span>
+                  Lihat Detail Berkas
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => navigate('/staff/dashboard')}
+                className="w-full py-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-[13px] transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">dashboard</span>
+                Kembali ke Dashboard Staf
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

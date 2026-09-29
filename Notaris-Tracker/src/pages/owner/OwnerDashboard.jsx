@@ -5,6 +5,23 @@ import MetricCard from '../../components/common/MetricCard';
 import UrgentAlerts from '../../components/features/owner/UrgentAlerts';
 import RecentActivity from '../../components/features/owner/RecentActivity';
 import DateFilter from '../../components/common/DateFilter';
+import { 
+  CalendarWidget, 
+  ProgressWidget, 
+  UpcomingTasksWidget, 
+  TasksOverviewChart, 
+  PriorityDonutChart 
+} from '../../components/common/DashboardWidgets';
+import { 
+  FileText, 
+  Users, 
+  CheckCircle2, 
+  TrendingUp, 
+  Download, 
+  CreditCard,
+  Building,
+  AlertCircle
+} from 'lucide-react';
 
 export const OwnerDashboard = () => {
   const { cases } = useCases();
@@ -32,17 +49,17 @@ export const OwnerDashboard = () => {
     });
   }, [cases, filterDate, filterMonth, filterYear]);
 
-  // Dynamic calculations based on filtered state
+  // Calculations
   const totalCount = filteredCases.length;
   const completedCount = filteredCases.filter((c) => c.status === 'Selesai').length;
+  const inProgressCount = filteredCases.filter((c) => c.status !== 'Selesai').length;
+  const overdueNum = overdueCount || 0;
 
-  // Derive unique clients count based on filtered cases
   const activeClientsCount = useMemo(() => {
-    const clients = new Set(filteredCases.map(c => c.clientId));
+    const clients = new Set(filteredCases.map(c => c.clientId || c.clientName));
     return clients.size;
   }, [filteredCases]);
 
-  // Calculate finance metrics based on filtered cases
   const financeStats = useMemo(() => {
     let totalTarget = 0;
     let totalReceived = 0;
@@ -61,15 +78,32 @@ export const OwnerDashboard = () => {
     };
   }, [filteredCases]);
 
+  const upcomingList = useMemo(() => {
+    return filteredCases
+      .filter((c) => c.status !== 'Selesai')
+      .slice(0, 3)
+      .map((c) => ({
+        id: c.id,
+        title: `${c.serviceType} - ${c.clientName}`,
+        date: c.estimationDate,
+        priority: c.status === 'TERLAMBAT' ? 'High' : 'Medium',
+      }));
+  }, [filteredCases]);
+
   return (
-    <div className="space-y-8 font-sans">
+    <div className="space-y-6 font-sans select-none">
       
-      {/* Dashboard Header (24px - 30px size range) */}
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end text-left gap-4">
+      {/* Executive Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center text-left gap-4">
         <div>
-          <h2 className="text-[30px] font-extrabold text-text tracking-tight">Executive Overview</h2>
-          <p className="text-[14px] text-muted mt-1.5 font-medium">Real-time operational performance of NotaryDoc Pro.</p>
+          <h2 className="text-[26px] sm:text-[28px] font-black text-slate-800 tracking-tight">
+            Ringkasan Eksekutif Notaris
+          </h2>
+          <p className="text-[13.5px] text-slate-400 font-medium mt-1">
+            Pantauan kinerja berkas, perputaran keuangan, dan kepatuhan staf secara realtime.
+          </p>
         </div>
+
         <div className="flex gap-3 items-center flex-wrap">
           <DateFilter
             date={filterDate}
@@ -79,94 +113,128 @@ export const OwnerDashboard = () => {
             onMonthChange={setFilterMonth}
             onYearChange={setFilterYear}
           />
-          <button className="flex items-center gap-2 px-5 h-11 border border-outline-variant rounded-xl bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-body-md font-semibold text-[14px]">
-            <span className="material-symbols-outlined text-[20px]">download</span>
-            Export Report
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 h-11 border border-slate-200 rounded-2xl bg-white hover:bg-slate-50 transition-all text-slate-700 font-bold text-[12.5px] shadow-xs active:scale-95"
+          >
+            <Download className="w-4 h-4 text-slate-500" />
+            <span>Ekspor Laporan</span>
           </button>
         </div>
       </div>
 
-      {/* Bento Layout Container: Metric cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        
-        {/* KPI Card 1: Total Documents */}
+      {/* 4 Soft 3D Pastel Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <MetricCard
-          title="Total Documents"
-          value={totalCount.toLocaleString()}
-          icon="description"
-          change="+12.5%"
-          color="primary"
-          footerText="Total finalized files this month"
+          title="Total Berkas"
+          value={totalCount}
+          icon={FileText}
+          change={totalCount > 0 ? `${totalCount}` : null}
+          changeText="total berkas"
+          color="purple"
         />
-
-        {/* KPI Card 2: Active Clients */}
         <MetricCard
-          title="Active Clients"
-          value={activeClientsCount.toLocaleString()}
-          icon="group"
-          color="secondary"
-          footerText="Active consulting client portfolios"
+          title="Klien Aktif"
+          value={activeClientsCount}
+          icon={Users}
+          change={activeClientsCount > 0 ? `${activeClientsCount}` : null}
+          changeText="klien terdaftar"
+          color="mint"
         />
-
-        {/* KPI Card 3: Completed Documents */}
         <MetricCard
-          title="Completed Documents"
-          value={completedCount.toLocaleString()}
-          icon="task_alt"
-          color="tertiary"
-          footerText="Files successfully completed"
+          title="Berkas Selesai"
+          value={completedCount}
+          icon={CheckCircle2}
+          change={completedCount > 0 ? `${completedCount}` : null}
+          changeText="berkas terselesaikan"
+          color="amber"
         />
+        <MetricCard
+          title="Tingkat Penyelesaian"
+          value={`${totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%`}
+          icon={TrendingUp}
+          change={totalCount > 0 ? `${Math.round((completedCount / totalCount) * 100)}%` : null}
+          changeText="kinerja kantor"
+          color="cyan"
+        />
+      </div>
 
-        {/* KPI Card 4: Completion Rate */}
-        <div className="bg-surface-container-lowest border border-outline-variant p-7 rounded-xl shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between group relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-24 h-24 bg-primary/5 rounded-bl-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
-          
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-[13px] text-on-surface-variant/80 font-semibold uppercase tracking-wider">
-              Completion Rate
+      {/* Financial Overview (3 Soft 3D Pastel Cards) */}
+      <div className="bg-white border border-slate-200/80 p-6 rounded-[28px] shadow-[0_10px_30px_rgba(112,144,176,0.06)] text-left">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[17px] font-extrabold text-slate-800 flex items-center gap-2 tracking-tight">
+            <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CreditCard className="w-4 h-4" />
+            </span>
+            Ringkasan Keuangan Periode Terpilih
+          </h3>
+          <span className="text-[11px] font-bold text-slate-400">IDR Real-time</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-[#EDFAF3] border border-[#D5F5E4] p-5 rounded-2xl flex flex-col justify-between">
+            <p className="text-[11.5px] font-bold text-emerald-800 uppercase tracking-wider">
+              Total Target Biaya Berkas
             </p>
-            <span className="text-primary font-bold text-[14px]">{totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%</span>
+            <p className="text-[24px] font-black text-emerald-950 mt-2">
+              Rp {financeStats.totalTarget.toLocaleString('id-ID')}
+            </p>
           </div>
-          
-          <h3 className="font-bold text-[18px] text-on-surface mt-2 mb-3">Operational Goal</h3>
-          
-          <div className="w-full bg-surface-container-high h-4 rounded-full overflow-hidden">
-            <div 
-              className="bg-primary h-full rounded-full shadow-[0_0_8px_rgba(0,108,73,0.3)] transition-all duration-500" 
-              style={{ width: `${totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%` }}
+          <div className="bg-[#EEF9FD] border border-[#D2EEFB] p-5 rounded-2xl flex flex-col justify-between">
+            <p className="text-[11.5px] font-bold text-sky-800 uppercase tracking-wider">
+              Dana Masuk (Diterima)
+            </p>
+            <p className="text-[24px] font-black text-sky-950 mt-2">
+              Rp {financeStats.totalReceived.toLocaleString('id-ID')}
+            </p>
+          </div>
+          <div className="bg-[#FEF8EB] border border-[#FDEECC] p-5 rounded-2xl flex flex-col justify-between">
+            <p className="text-[11.5px] font-bold text-amber-800 uppercase tracking-wider">
+              Piutang Berjalan (Outstanding)
+            </p>
+            <p className="text-[24px] font-black text-amber-950 mt-2">
+              Rp {financeStats.totalOutstanding.toLocaleString('id-ID')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Split Grid (Charts & Alerts + Right Widgets) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* Left 8 Columns */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <TasksOverviewChart cases={filteredCases} />
+            <PriorityDonutChart 
+              high={overdueNum} 
+              medium={Math.max(0, inProgressCount - overdueNum)} 
+              low={completedCount} 
             />
           </div>
-          <p className="text-[12px] text-on-surface-variant mt-3 text-right">Target: 100% Completion</p>
-        </div>
-      </div>
 
-      {/* Financial Overview Section */}
-      <div className="bg-white border border-[#E2E8F0] p-6 rounded-2xl shadow-sm text-left">
-        <h3 className="text-[18px] font-bold text-on-surface mb-4 flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">payments</span>
-          Ringkasan Keuangan Periode Terpilih
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-[#ECFDF5] border border-[#A7F3D0] p-4 rounded-xl flex flex-col justify-between min-h-[90px]">
-            <p className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Total Target Biaya Berkas</p>
-            <p className="text-[20px] font-extrabold text-emerald-900 mt-1">Rp {financeStats.totalTarget.toLocaleString('id-ID')}</p>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex flex-col justify-between min-h-[90px]">
-            <p className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Dana Masuk (Diterima)</p>
-            <p className="text-[20px] font-extrabold text-blue-900 mt-1">Rp {financeStats.totalReceived.toLocaleString('id-ID')}</p>
-          </div>
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex flex-col justify-between min-h-[90px]">
-            <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Piutang Berjalan (Outstanding)</p>
-            <p className="text-[20px] font-extrabold text-amber-900 mt-1">Rp {financeStats.totalOutstanding.toLocaleString('id-ID')}</p>
+          {/* Lower Bento Grid: Urgent Alerts + Recent Activity */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <UrgentAlerts />
+            <RecentActivity />
           </div>
         </div>
+
+        {/* Right 4 Columns */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Calendar Widget */}
+          <CalendarWidget />
+
+          {/* Progress Widget */}
+          <ProgressWidget total={totalCount} completed={completedCount} />
+
+          {/* Upcoming Tasks Widget */}
+          <UpcomingTasksWidget tasks={upcomingList} />
+        </div>
+
       </div>
 
-      {/* Lower Bento Grid: Urgent Alerts + Recent Activity */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter-grid">
-        <UrgentAlerts />
-        <RecentActivity />
-      </div>
     </div>
   );
 };

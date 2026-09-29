@@ -6,232 +6,11 @@ import { SERVICE_TYPES, SERVICE_CATEGORIES, getCaseCategory } from '../../consta
 import DateFilter from '../../components/common/DateFilter';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import { getStagesForCase } from '../../utils/getStagesForCase';
 
-const getStagesForCase = (c) => {
-  if (!c) return [];
-  const isPPAT = c.category?.toLowerCase() === 'ppat' || ['AJB', 'HIBAH', 'APHB', 'APHT', 'WARIS', 'ROYA', 'PECAH', 'GANTI', 'KONVERSI', 'SKMHT', 'HT', 'HGB', 'HAK_PAKAI'].includes(c.serviceType);
 
-  if (c.serviceType === 'APHT') {
-    return [
-      { id: 1, label: 'Pengecekan kelengkapan Berkas' },
-      { id: 2, label: 'Pengecekan sertifikat' },
-      { id: 3, label: 'Pengetikan akta' },
-      { id: 4, label: 'Tanda tangan akta' },
-      { id: 5, label: 'Penomoran akta' },
-      { id: 6, label: 'Pendaftaran akta pada aplikasi mitra kerja atr bpn dan spa' },
-      { id: 7, label: 'Backup pada aplikasi bank' },
-      { id: 8, label: 'Verifikasi berkas oleh bpn melalui aplikasi mutra kerja atr bpn' },
-      { id: 9, label: 'Berkas dikembalikan atau telah diverifikasi oleh bpn' },
-      { id: 10, label: 'Pembayaran sps' },
-      { id: 11, label: 'Verifikasi oleh bpn pada aplikasi bank' },
-      { id: 12, label: 'Penerbitan sht' },
-      { id: 13, label: 'Penyerahan berkas kepada pihak bank' }
-    ];
-  }
 
-  if (c.serviceType === 'AJB' || c.serviceType === 'HIBAH' || c.serviceType === 'APHB' || isPPAT) {
-    if (c.serviceType === 'WARIS' || c.serviceType === 'ROYA') {
-      return [
-        { id: 1, label: 'Pengecekan berkas' },
-        { id: 2, label: 'Proses validasi sertifikat' },
-        { id: 3, label: 'Proses pengecekan sertifikat' },
-        { id: 4, label: 'Pembayaran pajak peralihan' },
-        { id: 5, label: 'Validasi pajak peralihan' },
-        { id: 6, label: 'Pendaftaran pada atr bpn' },
-        { id: 7, label: 'Pemeriksaaan berkas oleh bpn' },
-        { id: 8, label: 'Berkas dikembalikan atau telah sesuai' },
-        { id: 9, label: 'Cari buku tanah di warkah bpn' },
-        { id: 10, label: 'Pembayaran sps' },
-        { id: 11, label: 'Pemeriksaan draft sertifikat' },
-        { id: 12, label: 'Draft sertifikat' },
-        { id: 13, label: 'Penerbitan sertifikat' },
-        { id: 14, label: 'Loket penyerahan produk' },
-        { id: 15, label: 'Penyerahan kepada pemohon' }
-      ];
-    }
-    if (c.serviceType === 'PECAH') {
-      return [
-        { id: 1, label: 'Pengecekan berkas' },
-        { id: 2, label: 'Pengecekan ke bpn status tanah yang kan dipecah' },
-        { id: 3, label: 'Pendaftaran ukur pemechan' },
-        { id: 4, label: 'Pengajuan tapak kapling' },
-        { id: 5, label: 'Masuk berkas fisik ke bpn' },
-        { id: 6, label: 'Pemeriksaan berkas oleh bpn' },
-        { id: 7, label: 'Berkas dikembalikan atau telah sesuai' },
-        { id: 8, label: 'Pembayaran sps' },
-        { id: 9, label: 'Ruang pengukuran untuk gambar, pemetaan, cetak su' },
-        { id: 10, label: 'Cari buku tanah di warkah bpn' },
-        { id: 11, label: 'Pemeriksaan draft sertifikat' },
-        { id: 12, label: 'Draft sertifikat' },
-        { id: 13, label: 'Penerbitan sertifikat' },
-        { id: 14, label: 'Loket penyerahan produk' },
-        { id: 15, label: 'Penyerahan kepada pemohon' }
-      ];
-    }
-    if (c.serviceType === 'GANTI') {
-      return [
-        { id: 1, label: 'Pengecekan berkas' },
-        { id: 2, label: 'Pengecekan ke bpn status tanah yang akan diproses' },
-        { id: 3, label: 'Pendaftaran ukur' },
-        { id: 4, label: 'Masuk berkas fisik ke bpn' },
-        { id: 5, label: 'Pemeriksaan berkas oleh bpn' },
-        { id: 6, label: 'Berkas dikembalikan atau telah sesuai' },
-        { id: 7, label: 'Pembayaran sps' },
-        { id: 8, label: 'Ruang pengukuran untuk gambar, pemetaan, cetak su' },
-        { id: 9, label: 'Cari buku tanah di warkah bpn' },
-        { id: 10, label: 'Pemriksaaan draft sertifikat' },
-        { id: 11, label: 'Draft sertifikat' },
-        { id: 12, label: 'Penerbitan sertifikat' },
-        { id: 13, label: 'Loket penyerahan produk' },
-        { id: 14, label: 'Penyerahan kepada pemohon' }
-      ];
-    }
-    if (c.serviceType === 'KONVERSI') {
-      return [
-        { id: 1, label: 'Pengecekan berkas' },
-        { id: 2, label: 'Pengecekan ke bpn status tanah yang akan diproses' },
-        { id: 3, label: 'Pendaftaran ukur' },
-        { id: 4, label: 'Masuk berkas fisik ke bpn' },
-        { id: 5, label: 'Pemeriksaan berkas oleh bpn' },
-        { id: 6, label: 'Berkas dikembalikan atau telah sesuai' },
-        { id: 7, label: 'Pembayaran sps' },
-        { id: 8, label: 'Ruang pengukuran untuk gambar, pemetaan, cetak su' },
-        { id: 9, label: 'Panitia lapang oleh petugas bpn' },
-        { id: 10, label: 'pengumuman' },
-        { id: 11, label: 'Pemeriksaan draft sertifikat' },
-        { id: 12, label: 'Draft sertifikat' },
-        { id: 13, label: 'Penerbitan sertifikat' },
-        { id: 14, label: 'Loket penyerahan produk' },
-        { id: 15, label: 'Penyerahan kepada pemohon' }
-      ];
-    }
 
-    // Default PPAT stages (AJB/HIBAH/APHB/SKMHT/HT/HGB/HAK_PAKAI)
-    return [
-      { id: 1, label: 'Pengecekan Berkas' },
-      { id: 2, label: 'Validasi Sertifikat' },
-      { id: 3, label: 'Pengecekan Sertifikat' },
-      { id: 4, label: 'Pengetikan Akta' },
-      { id: 5, label: 'Tanda Tangan Akta' },
-      { id: 6, label: 'Pembayaran Pajak Peralihan' },
-      { id: 7, label: 'Validasi Pajak Peralihan (PPH Final)' },
-      { id: 8, label: 'Penomoran Akta' },
-      { id: 9, label: 'Pendaftaran Akta' },
-      { id: 10, label: 'Masuk Berkas Fisik ke BPN' },
-      { id: 11, label: 'Pemeriksaan Berkas oleh BPN' },
-      { id: 12, label: 'Pencarian Buku Tanah' },
-      { id: 13, label: 'Pembayaran SPS' },
-      { id: 14, label: 'Pemeriksaan Draft Sertifikat' },
-      { id: 15, label: 'Draft Sertifikat' },
-      { id: 16, label: 'Penerbitan Sertifikat' },
-      { id: 17, label: 'Loket Penyerahan Produk' },
-      { id: 18, label: 'Penyerahan kepada Pemohon' }
-    ];
-  }
-
-  if (c.serviceType === 'FIDUSIA') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'PENGETIKKAN AKTA' },
-      { id: 3, label: 'TANDA TANGAN AKTA' },
-      { id: 4, label: 'PENOMORAN AKTA' },
-      { id: 5, label: 'PENDAFTARAN KE KEMENKUMHAM' },
-      { id: 6, label: 'PENERBITAN SK KEMENKUMHAM' },
-      { id: 7, label: 'PENYERAHAN AKTA KE PIHAK BANK' }
-    ];
-  }
-
-  if (c.serviceType === 'APJB' || c.serviceType === 'SKUM') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'PENGECEKKAN SERTIFIKAT' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PEMBAYARAN PAJAK PERALIHAN' },
-      { id: 6, label: 'PENOMORAN AKTA' },
-      { id: 7, label: 'PENYERAHAN AKTA KE PEMOHON' }
-    ];
-  }
-
-  if (c.serviceType === 'SEWA' || c.serviceType === 'CONSEN') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'PENGETIKKAN AKTA' },
-      { id: 3, label: 'TANDA TANGAN AKTA' },
-      { id: 4, label: 'PENOMORAN AKTA' },
-      { id: 5, label: 'PENYERAHAN AKTA KE PEMOHON' }
-    ];
-  }
-
-  if (c.serviceType === 'APPJB') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'PENGECEKKAN SERTIFIKAT' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PENOMORAN AKTA' }
-    ];
-  }
-
-  if (c.serviceType === 'APK') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'PENGECEKKAN SERTIFIKAT' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PENOMORAN AKTA' },
-      { id: 6, label: 'PENYERAHAN AKTA KE PIHAK BANK' }
-    ];
-  }
-
-  if (c.serviceType === 'YAYASAN') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'DAFTAR NAMA YAYASAN PADA AHU' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PENOMORAN AKTA' },
-      { id: 6, label: 'PENDAFTARAN KE KEMENKUMHAM' },
-      { id: 7, label: 'PENERBITAN SK KEMENKUMHAM' },
-      { id: 8, label: 'PENYERAHAN AKTA KE PEMOHON' }
-    ];
-  }
-
-  if (c.serviceType === 'PT') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'DAFTAR NAMA PT PADA AHU' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PENOMORAN AKTA' },
-      { id: 6, label: 'PENDAFTARAN KE KEMENKUMHAM' },
-      { id: 7, label: 'PENERBITAN SK KEMENKUMHAM' },
-      { id: 8, label: 'PENYERAHAN AKTA KE PEMOHON' }
-    ];
-  }
-
-  if (c.serviceType === 'CV') {
-    return [
-      { id: 1, label: 'PENGECEKKAN KELENGKAPAN BERKAS' },
-      { id: 2, label: 'DAFTAR NAMA CV PADA AHU' },
-      { id: 3, label: 'PENGETIKKAN AKTA' },
-      { id: 4, label: 'TANDA TANGAN AKTA' },
-      { id: 5, label: 'PENOMORAN AKTA' },
-      { id: 6, label: 'PENDAFTARAN KE KEMENKUMHAM' },
-      { id: 7, label: 'PENERBITAN SKT KEMENKUMHAM' },
-      { id: 8, label: 'PENYERAHAN AKTA KE PEMOHON' }
-    ];
-  }
-
-  return [
-    { id: 1, label: 'Pengecekkan Berkas' },
-    { id: 2, label: 'Pengecekkan Sertifikat' },
-    { id: 3, label: 'Pengetikkan Akta' },
-    { id: 4, label: 'Tanda Tangan Akta' },
-    { id: 5, label: 'Penomoran Akta' },
-    { id: 6, label: 'Penyelesaian Berkas' }
-  ];
-};
 
 const getActiveStageId = (c, stagesList) => {
   if (!c) return 1;
@@ -456,16 +235,16 @@ export const OwnerDocumentsPage = () => {
       </div>
 
       {/* Filters Row */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-wrap gap-3 items-center">
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-5 shadow-[0_10px_30px_rgba(112,144,176,0.06)] flex flex-wrap gap-3 items-center">
         {/* Search */}
         <div className="relative flex-1 min-w-[220px]">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+          <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama klien atau nomor berkas..."
-            className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary text-[13px]"
+            className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#6366F1] font-medium"
           />
         </div>
 
@@ -476,7 +255,7 @@ export const OwnerDocumentsPage = () => {
             setFilterCategory(e.target.value);
             setFilterService('Semua');
           }}
-          className="py-2.5 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-[12px] font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          className="py-2.5 px-3.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[12px] font-bold text-slate-700 focus:outline-none focus:border-[#6366F1] cursor-pointer"
         >
           <option value="Semua">Semua Kategori</option>
           <option value={SERVICE_CATEGORIES.PPAT}>PPAT</option>
@@ -487,7 +266,7 @@ export const OwnerDocumentsPage = () => {
         <select
           value={filterService}
           onChange={(e) => setFilterService(e.target.value)}
-          className="py-2.5 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-[12px] font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          className="py-2.5 px-3.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[12px] font-bold text-slate-700 focus:outline-none focus:border-[#6366F1] cursor-pointer"
         >
           {serviceOptions.map((s) => (
             <option key={s.id} value={s.id}>
@@ -516,7 +295,7 @@ export const OwnerDocumentsPage = () => {
               setFilterMonth('ALL');
               setFilterYear('ALL');
             }}
-            className="py-2.5 px-3 text-error border border-error/30 rounded-lg text-[12px] font-bold hover:bg-error/5 transition-colors flex items-center gap-1"
+            className="py-2.5 px-4 text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl text-[12px] font-bold hover:bg-rose-100 transition-colors flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
             Reset
@@ -527,21 +306,21 @@ export const OwnerDocumentsPage = () => {
       {/* Main 2-column layout: table + detail panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter-grid">
         {/* Table */}
-        <div className={`${selectedCase ? 'lg:col-span-7' : 'lg:col-span-12'} bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden`}>
+        <div className={`${selectedCase ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white border border-slate-200/80 rounded-[28px] shadow-[0_10px_30px_rgba(112,144,176,0.06)] overflow-hidden`}>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-outline-variant bg-surface-container-low">
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">No. Berkas</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Klien</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Layanan</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Status</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Dokumen</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Tenggat</th>
-                  <th className="px-4 py-3"></th>
+                <tr className="border-b border-slate-100 bg-[#F8FAFC]">
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">No. Berkas</th>
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Klien</th>
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Layanan</th>
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Status</th>
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Dokumen</th>
+                  <th className="px-5 py-3.5 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Tenggat</th>
+                  <th className="px-5 py-3.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-outline-variant">
+              <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-on-surface-variant text-[13px]">

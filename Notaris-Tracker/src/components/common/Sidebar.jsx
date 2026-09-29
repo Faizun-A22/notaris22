@@ -2,13 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { ROLES } from '../../constants/roles';
+import { 
+  LayoutDashboard, 
+  Users, 
+  FilePlus, 
+  FolderKanban, 
+  CreditCard, 
+  UserCheck, 
+  Activity, 
+  Globe2, 
+  Settings, 
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight,
+  Sparkles,
+  CheckCircle2,
+  X
+} from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { profile, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-
-
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Close drawer on path change (mobile)
   useEffect(() => {
@@ -33,53 +49,53 @@ export const Sidebar = ({ isOpen, onClose }) => {
       .toUpperCase();
   };
 
-  // Sidebar Menu Items based on Screenshot
+  // Menu Items matching exact layout in screenshot
   const menuItems = [
     {
       label: 'Dashboard',
       path: role === ROLES.OWNER ? '/owner/dashboard' : '/staff/dashboard',
-      icon: 'dashboard',
+      icon: LayoutDashboard,
+    },
+    ...(role === ROLES.STAFF ? [
+      {
+        label: 'File Baru',
+        path: '/staff/buat-berkas',
+        icon: FilePlus,
+      }
+    ] : []),
+    {
+      label: 'Daftar Berkas',
+      path: role === ROLES.OWNER ? '/owner/documents' : '/staff/documents',
+      icon: FolderKanban,
+    },
+    {
+      label: 'Keuangan',
+      path: role === ROLES.OWNER ? '/owner/finance' : '/staff/finance',
+      icon: CreditCard,
+    },
+    {
+      label: 'Data Klien',
+      path: role === ROLES.OWNER ? '/owner/clients' : '/staff/clients',
+      icon: UserCheck,
     },
     ...(role === ROLES.OWNER ? [
       {
         label: 'Kelola Staf',
         path: '/owner/staff',
-        icon: 'manage_accounts',
+        icon: Users,
       }
     ] : []),
-    ...(role === ROLES.STAFF ? [
-      {
-        label: 'File Baru',
-        path: '/staff/buat-berkas',
-        icon: 'add_box',
-      }
-    ] : []),
-    {
-      label: 'Semua File',
-      path: role === ROLES.OWNER ? '/owner/documents' : '/staff/documents',
-      icon: 'folder_open',
-    },
-    {
-      label: 'Keuangan',
-      path: role === ROLES.OWNER ? '/owner/finance' : '/staff/finance',
-      icon: 'payments',
-    },
-    {
-      label: 'Klien',
-      path: role === ROLES.OWNER ? '/owner/clients' : '/staff/clients',
-      icon: 'group',
-    },
     ...(role === ROLES.STAFF ? [
       {
         label: 'Aktivitas Staf',
         path: '/staff/activity',
-        icon: 'bar_chart',
+        icon: Activity,
       }
     ] : []),
     {
       label: 'Pelacakan Publik',
       path: '/track',
-      icon: 'public',
+      icon: Globe2,
       target: '_blank',
     }
   ];
@@ -90,51 +106,57 @@ export const Sidebar = ({ isOpen, onClose }) => {
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
         />
       )}
 
       <aside
-        className={`h-full w-[280px] bg-white border-r border-[#E2E8F0] flex flex-col p-6 shrink-0 z-50
-          fixed inset-y-0 left-0 lg:static transition-transform duration-300 lg:translate-x-0 ${
-            isOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`h-full ${isCollapsed ? 'w-[88px]' : 'w-[260px]'} bg-white/95 backdrop-blur-md rounded-3xl m-3 lg:m-4 flex flex-col p-4 shadow-[0_10px_35px_rgba(112,144,176,0.12)] border border-white/80 shrink-0 z-50
+          fixed inset-y-0 left-0 lg:static transition-all duration-300 ease-in-out ${
+            isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
       >
-        {/* Brand Header */}
-        <div className="mb-8 flex items-center justify-between">
+        {/* Brand Header with 3D checkmark pill icon like "Taskly" */}
+        <div className="mb-6 flex items-center justify-between px-2 pt-1">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                gavel
-              </span>
+            {/* Soft 3D App Icon */}
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-white shadow-[0_8px_18px_rgba(99,102,241,0.35)] shrink-0 group hover:rotate-3 transition-transform">
+              <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <div className="text-left">
-              <h1 className="text-[19px] font-extrabold text-on-surface leading-none tracking-tight flex items-center gap-1 font-sans">
-                LexNotary
-              </h1>
-            </div>
+            
+            {!isCollapsed && (
+              <div className="text-left">
+                <h1 className="text-[19px] font-extrabold text-slate-800 tracking-tight font-sans flex items-center gap-1.5">
+                  Taskly<span className="text-[#6366F1]">.</span>
+                </h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider -mt-0.5">
+                  Notaris Digital
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Close Sidebar Drawer Button on mobile */}
           <button
             onClick={onClose}
-            className="lg:hidden text-on-surface-variant hover:text-primary transition-colors p-1"
+            className="lg:hidden text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-xl hover:bg-slate-100"
             aria-label="Close Sidebar"
           >
-            <span className="material-symbols-outlined">close</span>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* MENU Group */}
-        <div className="flex flex-col flex-1">
-          <div className="text-left mb-3">
-            <span className="text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-widest">
-              MENU
-            </span>
-          </div>
+        {/* Navigation Menu */}
+        <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-1 py-1 space-y-1">
+          {!isCollapsed && (
+            <div className="text-left px-3 py-1.5">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                MENU UTAMA
+              </span>
+            </div>
+          )}
 
-          {/* Menu Items List */}
-          <nav className="space-y-2 mb-6 text-left">
+          <nav className="space-y-1.5">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path;
               const isExternal = item.target === '_blank';
@@ -142,81 +164,102 @@ export const Sidebar = ({ isOpen, onClose }) => {
               const linkProps = isExternal
                 ? { href: item.path, target: '_blank', rel: 'noopener noreferrer' }
                 : { to: item.path };
+              const Icon = item.icon;
 
               return (
                 <Tag
                   key={item.path}
                   {...linkProps}
-                  className={`flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all text-body-md ${
+                  title={isCollapsed ? item.label : undefined}
+                  className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'gap-3.5 px-4'} py-3 rounded-2xl transition-all duration-200 ${
                     isActive
-                      ? 'bg-primary-soft text-primary font-bold shadow-sm'
-                      : 'text-on-surface-variant hover:bg-surface-container-low transition-colors'
+                      ? 'bg-[#F2F1FD] text-[#6366F1] font-bold shadow-[inset_0_2px_4px_rgba(99,102,241,0.06),0_2px_6px_rgba(99,102,241,0.08)] border border-[#E0DDFB]'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  <span
-                    className="material-symbols-outlined text-[22px]"
-                    style={{
-                      fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0",
-                    }}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="text-[15px] font-semibold">{item.label}</span>
+                  <Icon className={`w-5 h-5 shrink-0 transition-transform ${isActive ? 'text-[#6366F1] scale-105' : 'text-slate-400'}`} />
+                  {!isCollapsed && (
+                    <span className="text-[13.5px] font-semibold tracking-tight">{item.label}</span>
+                  )}
                 </Tag>
               );
             })}
           </nav>
 
-          {/* SISTEM Group */}
-          <div className="mt-auto border-t border-[#F1F5F9] pt-4 text-left">
-            <span className="text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-widest block mb-3">
-              SISTEM
-            </span>
-            <div className="space-y-2">
-
-
-              {/* Pengaturan */}
-              <Link
-                to={role === ROLES.OWNER ? '/owner/settings' : '/staff/settings'}
-                className={`flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all text-body-md ${
-                  location.pathname.includes('settings')
-                    ? 'bg-primary-soft text-primary font-bold shadow-sm'
-                    : 'text-on-surface-variant hover:bg-surface-container-low transition-colors'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[22px]">
-                  settings
+          {/* Settings Section */}
+          <div className="pt-4 mt-auto">
+            {!isCollapsed && (
+              <div className="text-left px-3 py-1.5">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                  PENGATURAN
                 </span>
-                <span className="text-[15px] font-semibold">Pengaturan</span>
-              </Link>
-            </div>
+              </div>
+            )}
+            <Link
+              to={role === ROLES.OWNER ? '/owner/settings' : '/staff/settings'}
+              title={isCollapsed ? 'Pengaturan' : undefined}
+              className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'gap-3.5 px-4'} py-3 rounded-2xl transition-all duration-200 ${
+                location.pathname.includes('settings')
+                  ? 'bg-[#F2F1FD] text-[#6366F1] font-bold shadow-[inset_0_2px_4px_rgba(99,102,241,0.06),0_2px_6px_rgba(99,102,241,0.08)] border border-[#E0DDFB]'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-[#F8FAFC]'
+              }`}
+            >
+              <Settings className={`w-5 h-5 shrink-0 ${location.pathname.includes('settings') ? 'text-[#6366F1]' : 'text-slate-400'}`} />
+              {!isCollapsed && (
+                <span className="text-[13.5px] font-semibold tracking-tight">Pengaturan</span>
+              )}
+            </Link>
           </div>
         </div>
 
-        {/* User profile card at the absolute bottom */}
-        <div className="mt-6 pt-4 border-t border-[#F1F5F9] flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            {/* Avatar Circle */}
-            <div className="w-11 h-11 rounded-full bg-[#E2E8F0] flex items-center justify-center flex-shrink-0 overflow-hidden border border-outline-variant shadow-sm">
-              <span className="text-on-surface font-extrabold text-[14px]">
-                {getInitials(profile?.full_name || 'Sarah Wijaya')}
-              </span>
+
+        {/* Collapse toggle button */}
+        <div className="hidden lg:flex items-center justify-center py-1">
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-700 transition-colors py-1.5 px-3 rounded-xl hover:bg-slate-100"
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <>
+                <ChevronLeft className="w-4 h-4" />
+                <span>Ciutkan</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* User Profile Card at Bottom */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* 3D Round Avatar with initials */}
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-tr from-[#6366F1] to-[#A855F7] flex items-center justify-center text-white font-extrabold text-[13px] shrink-0 shadow-sm border-2 border-white">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                getInitials(profile?.full_name || 'Sarah Wijaya')
+              )}
             </div>
-            <div className="text-left min-w-0">
-              <p className="font-label-bold text-on-surface text-[14px] leading-tight font-bold truncate max-w-[140px]">
-                {profile?.full_name || 'Sarah W.'}
-              </p>
-              <p className="text-[12px] text-on-surface-variant leading-none mt-1.5 font-medium truncate max-w-[140px]">
-                {profile?.role === 'owner' ? 'Notaris Utama' : 'Staf Administrasi'}
-              </p>
-            </div>
+
+            {!isCollapsed && (
+              <div className="text-left min-w-0">
+                <p className="text-[13px] font-bold text-slate-800 truncate">
+                  {profile?.full_name || 'Sarah W.'}
+                </p>
+                <p className="text-[11px] text-slate-400 font-semibold truncate capitalize">
+                  {profile?.title || (profile?.role === 'owner' ? 'Notaris Utama' : 'Staf Administrasi')}
+                </p>
+              </div>
+            )}
           </div>
+
           <button
             onClick={handleLogout}
-            className="text-on-surface-variant hover:text-error transition-colors flex-shrink-0 p-1.5 rounded-lg hover:bg-error-container/20"
+            className="text-slate-400 hover:text-rose-600 transition-colors p-2 rounded-xl hover:bg-rose-50 shrink-0"
             title="Keluar"
           >
-            <span className="material-symbols-outlined text-[20px]">logout</span>
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </aside>

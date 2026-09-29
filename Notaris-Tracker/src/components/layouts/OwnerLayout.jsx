@@ -3,27 +3,26 @@ import { Outlet, Navigate } from 'react-router-dom';
 import Sidebar from '../common/Sidebar';
 import TopBar from '../common/TopBar';
 import { useAuth } from '../../hooks/useAuth';
+import { Loader2 } from 'lucide-react';
 
 export const OwnerLayout = () => {
   const { user, profile, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Tampilkan loading spinner saat session sedang dicek
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <span className="material-symbols-outlined animate-spin text-primary text-[40px]">sync</span>
+      <div className="min-h-screen bg-[#F0F2F8] flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-[#6366F1] animate-spin" />
       </div>
     );
   }
 
-  // Redirect jika belum login atau bukan owner
   if (!user || !profile || profile.role !== 'owner') {
     return <Navigate to="/login" replace />;
   }
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden relative">
+    <div className="flex h-screen w-full bg-[#F0F2F8] overflow-hidden relative font-sans">
       {/* Sidebar Navigation */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -35,21 +34,19 @@ export const OwnerLayout = () => {
           onMenuClick={() => setSidebarOpen(true)}
         />
 
-        {/* Scrollable Content Shell */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-          <div className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 md:px-margin-page py-4 sm:py-6 md:py-stack-lg animate-fade-in">
-            <Outlet />
-          </div>
+        {/* Scrollable Main Viewport */}
+        <main className="flex-1 overflow-y-auto custom-scrollbar px-4 sm:px-6 lg:px-8 py-5 space-y-6">
+          <Outlet />
 
-          {/* Consistent Footer */}
-          <footer className="w-full max-w-[1440px] mx-auto px-margin-page py-6 border-t border-outline-variant bg-surface-container-lowest flex justify-between items-center text-[12px] text-on-surface-variant font-medium mt-auto">
-            <p>&copy; 2026 Notaris Digital - Sistem Manajemen Berkas Terpadu</p>
-            <div className="flex gap-4">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-primary"></span>
-                System Operational
+          {/* Footer */}
+          <footer className="w-full mt-10 pt-6 border-t border-slate-200/60 flex flex-col sm:flex-row justify-between items-center text-[12px] text-slate-400 font-medium gap-3">
+            <p>&copy; 2026 LexNotary Digital &bull; Sistem Manajemen Berkas Terpadu</p>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Sistem Aktif & Terhubung
               </span>
-              <span>v1.0.4-stable</span>
+              <span>v2.4.0 (Claymorphic Edition)</span>
             </div>
           </footer>
         </main>

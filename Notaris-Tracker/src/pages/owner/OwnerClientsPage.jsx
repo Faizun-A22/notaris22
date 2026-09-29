@@ -63,7 +63,7 @@ export const OwnerClientsPage = () => {
     });
   }, [cases, filterDate, filterMonth, filterYear]);
 
-  const clients = useMemo(() => deriveClients(dateFilteredCases), [dateFilteredCases]);
+  const clients = useMemo(() => deriveClients(cases), [cases]);
 
   const filtered = useMemo(
     () => clients.filter((cl) =>
@@ -73,8 +73,8 @@ export const OwnerClientsPage = () => {
     [clients, search]
   );
 
-  const activeTotal = clients.reduce((acc, cl) => acc + cl.cases.filter((c) => !c.isComplete).length, 0);
-  const completedTotal = clients.reduce((acc, cl) => acc + cl.cases.filter((c) => c.isComplete).length, 0);
+  const activeTotal = dateFilteredCases.reduce((acc, cl) => acc + (cl.isComplete ? 0 : 1), 0);
+  const completedTotal = dateFilteredCases.reduce((acc, cl) => acc + (cl.isComplete ? 1 : 0), 0);
 
   return (
     <div className="space-y-stack-lg text-left">
@@ -86,35 +86,49 @@ export const OwnerClientsPage = () => {
         </div>
       </div>
 
-      {/* Summary Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter-grid">
-        {[
-          { label: 'Total Klien', value: clients.length, icon: 'group', color: 'text-primary', bg: 'bg-primary/10' },
-          { label: 'Berkas Aktif', value: activeTotal, icon: 'folder_open', color: 'text-secondary', bg: 'bg-secondary/10' },
-          { label: 'Berkas Selesai', value: completedTotal, icon: 'task_alt', color: 'text-tertiary', bg: 'bg-tertiary/10' },
-        ].map(({ label, value, icon, color, bg }) => (
-          <div key={label} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-card-padding flex items-center gap-4">
-            <div className={`w-12 h-12 ${bg} rounded-lg flex items-center justify-center`}>
-              <span className={`material-symbols-outlined ${color} text-[26px]`}>{icon}</span>
-            </div>
-            <div>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">{label}</p>
-              <p className={`font-extrabold text-[22px] mt-0.5 ${color}`}>{value}</p>
-            </div>
+      {/* Summary Strip (Soft 3D Pastel Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 select-none">
+        <div className="bg-[#F3F2FD] border border-[#E4E2FB] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(99,102,241,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#7C3AED] to-[#6366F1] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(99,102,241,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">group</span>
           </div>
-        ))}
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Total Klien</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{clients.length}</p>
+          </div>
+        </div>
+
+        <div className="bg-[#EDFAF3] border border-[#D5F5E4] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(16,185,129,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#059669] to-[#10B981] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(16,185,129,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">folder_open</span>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Berkas Aktif</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{activeTotal}</p>
+          </div>
+        </div>
+
+        <div className="bg-[#FEF8EB] border border-[#FDEECC] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(245,158,11,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#D97706] to-[#F59E0B] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(245,158,11,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">task_alt</span>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Berkas Selesai</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{completedTotal}</p>
+          </div>
+        </div>
       </div>
 
       {/* Search & Period Filter Row */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between">
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-5 shadow-[0_10px_30px_rgba(112,144,176,0.06)] flex flex-wrap gap-4 items-center justify-between">
         <div className="relative flex-1 max-w-md text-left">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+          <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama klien atau ID NIK..."
-            className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary text-[13px]"
+            className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#6366F1] font-medium"
           />
         </div>
 

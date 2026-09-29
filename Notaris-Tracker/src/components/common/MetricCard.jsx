@@ -1,55 +1,119 @@
 import React from 'react';
+import { 
+  FileText, 
+  CheckCircle2, 
+  Clock, 
+  AlertCircle, 
+  TrendingUp, 
+  TrendingDown, 
+  Minus,
+  Sparkles
+} from 'lucide-react';
 
-export const MetricCard = ({ title, value, icon, change, changeText, color = 'primary', footerText }) => {
-  // Styles based on color theme
-  let iconBg = 'bg-primary-container/20 text-primary';
-  let decorBg = 'bg-primary/5';
-  let titleColor = 'text-primary';
+export const MetricCard = ({ 
+  title, 
+  value, 
+  icon: IconComponent, 
+  change, 
+  changeText = 'vs minggu lalu', 
+  color = 'purple', // 'purple' | 'mint' | 'amber' | 'rose' | 'cyan'
+  footerText 
+}) => {
+  // Color configuration matching screenshot exactly
+  const colorThemes = {
+    purple: {
+      cardBg: 'bg-[#F3F2FD] border-[#E4E2FB]',
+      iconGradient: 'bg-gradient-to-tr from-[#7C3AED] to-[#6366F1] shadow-[0_8px_16px_rgba(99,102,241,0.32)]',
+      textColor: 'text-slate-800',
+      badgeColor: 'text-emerald-600 bg-emerald-100/60',
+    },
+    mint: {
+      cardBg: 'bg-[#EDFAF3] border-[#D5F5E4]',
+      iconGradient: 'bg-gradient-to-tr from-[#059669] to-[#10B981] shadow-[0_8px_16px_rgba(16,185,129,0.32)]',
+      textColor: 'text-slate-800',
+      badgeColor: 'text-emerald-600 bg-emerald-100/60',
+    },
+    amber: {
+      cardBg: 'bg-[#FEF8EB] border-[#FDEECC]',
+      iconGradient: 'bg-gradient-to-tr from-[#D97706] to-[#F59E0B] shadow-[0_8px_16px_rgba(245,158,11,0.32)]',
+      textColor: 'text-slate-800',
+      badgeColor: 'text-amber-700 bg-amber-100/60',
+    },
+    rose: {
+      cardBg: 'bg-[#FDF0F3] border-[#FCDCE3]',
+      iconGradient: 'bg-gradient-to-tr from-[#DC2626] to-[#EF4444] shadow-[0_8px_16px_rgba(239,68,68,0.32)]',
+      textColor: 'text-slate-800',
+      badgeColor: 'text-rose-600 bg-rose-100/60',
+    },
+    cyan: {
+      cardBg: 'bg-[#EEF9FD] border-[#D2EEFB]',
+      iconGradient: 'bg-gradient-to-tr from-[#0284C7] to-[#0EA5E9] shadow-[0_8px_16px_rgba(14,165,233,0.32)]',
+      textColor: 'text-slate-800',
+      badgeColor: 'text-sky-700 bg-sky-100/60',
+    }
+  };
 
-  if (color === 'secondary') {
-    iconBg = 'bg-secondary-container/30 text-secondary';
-    decorBg = 'bg-secondary-container/20';
-    titleColor = 'text-secondary';
-  } else if (color === 'error') {
-    iconBg = 'bg-error-container/30 text-error';
-    decorBg = 'bg-error-container/20';
-    titleColor = 'text-error';
-  } else if (color === 'tertiary') {
-    iconBg = 'bg-tertiary-fixed text-on-tertiary-fixed';
-    decorBg = 'bg-tertiary-fixed-dim/25';
-    titleColor = 'text-on-surface';
-  }
+  // Map legacy color prop if passed (primary/secondary/tertiary/error)
+  let activeThemeKey = color;
+  if (color === 'primary') activeThemeKey = 'purple';
+  else if (color === 'secondary') activeThemeKey = 'mint';
+  else if (color === 'warning') activeThemeKey = 'amber';
+  else if (color === 'tertiary') activeThemeKey = 'cyan';
+  else if (color === 'error') activeThemeKey = 'rose';
+
+  const theme = colorThemes[activeThemeKey] || colorThemes.purple;
+
+  // Render icon safely
+  const renderIcon = () => {
+    if (!IconComponent) return <FileText className="w-5 h-5 text-white" />;
+    if (typeof IconComponent === 'string') {
+      // Legacy material symbol name fallback
+      if (IconComponent === 'description') return <FileText className="w-5 h-5 text-white" />;
+      if (IconComponent === 'group') return <FileText className="w-5 h-5 text-white" />;
+      if (IconComponent === 'task_alt') return <CheckCircle2 className="w-5 h-5 text-white" />;
+      return <Sparkles className="w-5 h-5 text-white" />;
+    }
+    return <IconComponent className="w-5 h-5 text-white stroke-[2.2]" />;
+  };
+
+  const isPositive = change && (change.startsWith('+') || change.includes('↑'));
+  const isNegative = change && (change.startsWith('-') || change.includes('↓'));
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant p-7 rounded-xl shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-      <div className={`absolute right-0 top-0 w-28 h-28 ${decorBg} rounded-bl-full -mr-8 -mt-8 group-hover:scale-110 transition-transform`}></div>
-      
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-14 h-14 ${iconBg} rounded-xl flex items-center justify-center shadow-sm`}>
-          <span className="material-symbols-outlined" style={{ fontSize: '32px' }}>
-            {icon}
-          </span>
+    <div className={`${theme.cardBg} border rounded-[22px] p-5 text-left relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md group flex flex-col justify-between select-none`}>
+      {/* Top Header: 3D Icon & Title / Change Pill */}
+      <div className="flex items-center gap-3.5 mb-3">
+        {/* Soft 3D Raised Icon Badge */}
+        <div className={`w-11 h-11 rounded-2xl ${theme.iconGradient} flex items-center justify-center shrink-0 transition-transform group-hover:scale-105`}>
+          {renderIcon()}
         </div>
-        {change && (
-          <span className={`${color === 'primary' ? 'text-primary' : color === 'secondary' ? 'text-secondary' : 'text-error'} font-bold text-[13px]`}>
-            {change}
-          </span>
-        )}
+
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-bold text-slate-500 tracking-tight truncate">
+            {title}
+          </p>
+          <h3 className={`text-[28px] font-black tracking-tight leading-none ${theme.textColor} mt-1`}>
+            {value}
+          </h3>
+        </div>
       </div>
 
-      <p className="text-on-surface-variant/80 font-semibold text-[13px] uppercase tracking-wider">
-        {title}
-      </p>
-      
-      <h3 className={`text-[36px] font-extrabold tracking-tight leading-none ${titleColor} mt-2 mb-2`}>
-        {value}
-      </h3>
-
-      {footerText && (
-        <div className="mt-3 pt-3 border-t border-outline-variant">
-          <p className="text-[12px] font-medium text-on-surface-variant/80">{footerText}</p>
-        </div>
-      )}
+      {/* Bottom Subtext / Trend Pill */}
+      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pt-1">
+        {change ? (
+          <div className="flex items-center gap-1.5">
+            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${theme.badgeColor}`}>
+              {isPositive && <TrendingUp className="w-3 h-3" />}
+              {isNegative && <TrendingDown className="w-3 h-3" />}
+              {!isPositive && !isNegative && <Minus className="w-3 h-3" />}
+              {change}
+            </span>
+            <span className="text-slate-400 text-[10.5px] truncate">{changeText}</span>
+          </div>
+        ) : footerText ? (
+          <span className="text-slate-400 text-[11px]">{footerText}</span>
+        ) : null}
+      </div>
     </div>
   );
 };

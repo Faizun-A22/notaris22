@@ -52,7 +52,8 @@ export const StaffDocumentsPage = () => {
   const [searchVal, setSearchVal] = useState('');
   const navigate = useNavigate();
   const { cases, updateCaseStatus, toggleDocStatus, deleteCase } = useCases();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isOwner = profile?.role === 'owner';
 
   const [filterCategory, setFilterCategory] = useState('Semua');
   const [sortBy, setSortBy] = useState('newest'); // newest | belum | selesai
@@ -76,15 +77,18 @@ export const StaffDocumentsPage = () => {
       const matchCategory = filterCategory === 'Semua' || getCaseCategory(c) === filterCategory;
 
       // Period filter check
-      if (!c.entryDate) return false;
-      const [yStr, mStr, dStr] = c.entryDate.split('-');
-      const cYear = parseInt(yStr, 10);
-      const cMonth = parseInt(mStr, 10);
-      const cDay = parseInt(dStr, 10);
+      const hasDateFilter = filterYear !== 'ALL' || filterMonth !== 'ALL' || filterDate !== 'ALL';
+      if (hasDateFilter) {
+        if (!c.entryDate) return false;
+        const [yStr, mStr, dStr] = c.entryDate.split('-');
+        const cYear = parseInt(yStr, 10);
+        const cMonth = parseInt(mStr, 10);
+        const cDay = parseInt(dStr, 10);
 
-      if (filterYear !== 'ALL' && cYear !== parseInt(filterYear, 10)) return false;
-      if (filterMonth !== 'ALL' && cMonth !== parseInt(filterMonth, 10)) return false;
-      if (filterDate !== 'ALL' && cDay !== parseInt(filterDate, 10)) return false;
+        if (filterYear !== 'ALL' && cYear !== parseInt(filterYear, 10)) return false;
+        if (filterMonth !== 'ALL' && cMonth !== parseInt(filterMonth, 10)) return false;
+        if (filterDate !== 'ALL' && cDay !== parseInt(filterDate, 10)) return false;
+      }
 
       return matchSearch && matchCategory;
     });
@@ -123,7 +127,7 @@ export const StaffDocumentsPage = () => {
     }
 
     return list;
-  }, [cases, searchVal, filterCategory, sortBy]);
+  }, [cases, searchVal, filterCategory, sortBy, filterDate, filterMonth, filterYear]);
 
   const activeCount = cases.filter((c) => !c.isComplete).length;
   const docCompleteCount = cases.filter((c) => !c.isComplete && c.documentsReady).length;
@@ -203,41 +207,55 @@ export const StaffDocumentsPage = () => {
         </div>
       )}
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter-grid select-none">
-        {[
-          { label: 'Berkas Aktif', value: activeCount, icon: 'folder_open', color: 'text-primary', bg: 'bg-primary/10' },
-          { label: 'Berkas Lengkap (Siap)', value: docCompleteCount, icon: 'task_alt', color: 'text-green-700', bg: 'bg-green-100/40' },
-          { label: 'Dokumen Belum Lengkap', value: docMissingCount, icon: 'pending_actions', color: 'text-warning', bg: 'bg-amber-500/10' },
-        ].map(({ label, value, icon, color, bg }) => (
-          <div key={label} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-card-padding flex items-center gap-4 shadow-sm">
-            <div className={`w-11 h-11 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-              <span className={`material-symbols-outlined ${color} text-[22px]`}>{icon}</span>
-            </div>
-            <div>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">{label}</p>
-              <p className={`font-extrabold text-[22px] mt-0.5 ${color}`}>{value}</p>
-            </div>
+      {/* Quick Stats (Soft 3D Pastel Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 select-none">
+        <div className="bg-[#F3F2FD] border border-[#E4E2FB] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(99,102,241,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#7C3AED] to-[#6366F1] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(99,102,241,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">folder_open</span>
           </div>
-        ))}
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Berkas Aktif</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{activeCount}</p>
+          </div>
+        </div>
+
+        <div className="bg-[#EDFAF3] border border-[#D5F5E4] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(16,185,129,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#059669] to-[#10B981] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(16,185,129,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">task_alt</span>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Berkas Lengkap (Siap)</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{docCompleteCount}</p>
+          </div>
+        </div>
+
+        <div className="bg-[#FEF8EB] border border-[#FDEECC] rounded-[22px] p-5 flex items-center gap-4 shadow-[0_8px_20px_rgba(245,158,11,0.06)]">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#D97706] to-[#F59E0B] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(245,158,11,0.32)] shrink-0">
+            <span className="material-symbols-outlined text-[24px]">pending_actions</span>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Dokumen Belum Lengkap</p>
+            <p className="font-black text-[26px] text-slate-800 leading-tight mt-0.5">{docMissingCount}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col gap-4">
+      {/* Controls Container */}
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-5 shadow-[0_10px_30px_rgba(112,144,176,0.06)] flex flex-col gap-4">
         {/* Row 1: Search & Date Filter */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-[220px] max-w-md text-left">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+            <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
             <input
               type="text"
               value={searchVal}
               onChange={(e) => setSearchVal(e.target.value)}
               placeholder="Cari nama klien atau nomor berkas..."
-              className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary text-[13px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#6366F1] font-medium"
             />
           </div>
-          
+
           {/* Date Filter */}
           <DateFilter
             date={filterDate}
@@ -250,18 +268,18 @@ export const StaffDocumentsPage = () => {
         </div>
 
         {/* Row 2: Category & Sorting */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-outline-variant/60">
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-100">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-[11px] text-on-surface-variant font-bold uppercase tracking-wider">Kategori:</span>
+            <span className="text-[11px] text-slate-400 font-extrabold uppercase tracking-wider">Kategori:</span>
             <div className="flex gap-1.5">
               {['Semua', SERVICE_CATEGORIES.PPAT, SERVICE_CATEGORIES.NOTARIS].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setFilterCategory(cat)}
-                  className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all border ${
+                  className={`px-3.5 py-1.5 rounded-xl text-[12px] font-bold transition-all ${
                     filterCategory === cat
-                      ? 'bg-inverse-surface text-inverse-on-surface border-inverse-surface'
-                      : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
+                      ? 'bg-[#F2F1FD] text-[#6366F1] border border-[#E0DDFB] shadow-xs'
+                      : 'text-slate-500 hover:bg-slate-100'
                   }`}
                 >
                   {cat}
@@ -271,11 +289,11 @@ export const StaffDocumentsPage = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-on-surface-variant font-bold">Urutkan:</span>
+            <span className="text-[11px] text-slate-400 font-extrabold uppercase">Urutkan:</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="py-2 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-[12px] font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="py-1.5 px-3 bg-[#F8FAFC] border border-slate-200 rounded-xl text-[12px] font-bold text-slate-700 focus:outline-none focus:border-[#6366F1] cursor-pointer"
             >
               <option value="newest">Terbaru</option>
               <option value="belum">Belum Lengkap</option>
@@ -493,13 +511,15 @@ export const StaffDocumentsPage = () => {
                 {selectedCase.documentsReady ? 'Tandai Dokumen Belum Lengkap' : 'Konfirmasi Dokumen Lengkap'}
               </button>
 
-              <button
-                onClick={() => setConfirmDeleteId(selectedCase.id)}
-                className="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 border border-error/30 text-error hover:bg-error/5 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[16px]">delete</span>
-                Hapus Berkas Ini
-              </button>
+              {isOwner && (
+                <button
+                  onClick={() => setConfirmDeleteId(selectedCase.id)}
+                  className="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 border border-error/30 text-error hover:bg-error/5 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                  Hapus Berkas Ini
+                </button>
+              )}
             </div>
           </div>
         )}

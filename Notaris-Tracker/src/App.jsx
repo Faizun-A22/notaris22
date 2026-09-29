@@ -20,6 +20,7 @@ import FinancePage from './pages/common/FinancePage';
 // Owner Pages
 import OwnerDashboard from './pages/owner/OwnerDashboard';
 import OwnerStaffManagement from './pages/owner/OwnerStaffManagement';
+import { OwnerStaffDetailPage } from './pages/owner/OwnerStaffDetailPage';
 import OwnerDocumentsPage from './pages/owner/OwnerDocumentsPage';
 import OwnerClientsPage from './pages/owner/OwnerClientsPage';
 
@@ -39,8 +40,10 @@ function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/login/owner" element={<LoginPage />} />
             <Route path="/login/staff" element={<LoginPage />} />
+            <Route path="/login/owner" element={<LoginPage />} />
+            <Route path="/login-notaris-ketua" element={<LoginPage />} />
+            <Route path="/owner-login" element={<LoginPage />} />
             <Route path="/track" element={<ClientTrackingPage />} />
             <Route path="/status" element={<ClientPublicStatus />} />
 
@@ -49,10 +52,11 @@ function App() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<OwnerDashboard />} />
               <Route path="staff" element={<OwnerStaffManagement />} />
+              <Route path="staff/:id" element={<OwnerStaffDetailPage />} />
               <Route path="documents" element={<OwnerDocumentsPage />} />
               <Route path="clients" element={<OwnerClientsPage />} />
               <Route path="finance" element={<FinancePage />} />
-              <Route path="activity" element={<StaffActivityPage />} />
+              <Route path="activity" element={<Navigate to="/owner/staff" replace />} />
               <Route path="settings" element={<StaffSettingsPage />} />
             </Route>
 

@@ -1,416 +1,333 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCases } from '../../../hooks/useCases';
-import { formatDate } from '../../../utils/formatDate';
+import { useAuth } from '../../../hooks/useAuth';
 import { checkOverdue } from '../../../utils/checkOverdue';
-import { SERVICE_TYPES } from '../../../constants/serviceTypes';
+import { 
+  Filter, 
+  Calendar, 
+  MoreVertical, 
+  Eye, 
+  Edit, 
+  Trash2, 
+  CheckCircle2, 
+  Clock, 
+  AlertCircle,
+  FileText
+} from 'lucide-react';
 
 export const CaseTable = ({ searchVal = '', casesList }) => {
-  const { cases: allCases, updateCaseStatus, deleteCase } = useCases();
+  const { cases: allCases, deleteCase } = useCases();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === 'owner';
   const cases = casesList || allCases;
   const navigate = useNavigate();
 
-  // Filters State
+  // Tab Filter ('All' | 'To Do' | 'In Progress' | 'Done')
+  const [activeTab, setActiveTab] = useState('All');
+  const [sortBy, setSortBy] = useState('dueDate');
   const [filterType, setFilterType] = useState('ALL');
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [activeMenuId, setActiveMenuId] = useState(null);
 
-  // Pagination State
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 6;
 
-  // Derive unique service types from cases for filter option
-  const serviceTypeOptions = useMemo(() => {
-    const types = new Set(cases.map(c => c.serviceType));
-    return Array.from(types);
-  }, [cases]);
-
-  // Client Avatar Initials and Styling Generator
-  const getAvatarStyle = (name) => {
-    let initials = 'US';
-    let colorClass = 'bg-blue-100 text-blue-800';
-
-    if (!name) return { initials, colorClass };
-
-    if (name.startsWith('PT.')) {
-      initials = 'PT';
-      colorClass = 'bg-blue-100 text-blue-800';
-    } else if (name.startsWith('CV.')) {
-      initials = 'CV';
-      colorClass = 'bg-[#ECFDF5] text-emerald-800';
-    } else {
-      const parts = name.split(' ');
-      if (parts.length >= 2) {
-        initials = (parts[0][0] + parts[1][0]).toUpperCase();
-      } else {
-        initials = name.substring(0, 2).toUpperCase();
-      }
-
-      // Assign deterministic color based on sum of char codes
-      const charCodeSum = initials.charCodeAt(0) + (initials.charCodeAt(1) || 0);
-      const mod = charCodeSum % 3;
-      if (mod === 0) {
-        colorClass = 'bg-[#FDF2F8] text-pink-700';
-      } else if (mod === 1) {
-        colorClass = 'bg-[#F5F3FF] text-purple-700';
-      } else {
-        colorClass = 'bg-[#ECFEFF] text-cyan-700';
-      }
-    }
-
-    return { initials, colorClass };
-  };
-
-  // Progress Bar Details Mapper based on Screenshot
-  const getProgressDetails = (c, isOverdue) => {
-    if (isOverdue) {
-      if (c.serviceType === 'SKMHT' || c.serviceType === 'HT') {
-        return { label: 'Validation Stalled', barWidth: '60%', colorClass: 'bg-error', textClass: 'text-error' };
-      }
-      return { label: 'Registration Blocked', barWidth: '85%', colorClass: 'bg-error', textClass: 'text-error' };
-    }
-
-    switch (c.status) {
-      case 'Pemeriksaan Dokumen':
-        return { label: 'Verification 15%', barWidth: '15%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Verifikasi Sertifikat':
-        return { label: 'Tax Check 25%', barWidth: '25%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Penyusunan Draf':
-        return { label: 'Drafting 40%', barWidth: '40%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Tanda Tangan Akta':
-        return { label: 'Signing 90%', barWidth: '90%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Validasi Pajak':
-        return { label: 'Validation 60%', barWidth: '60%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Proses BPN':
-        return { label: 'BPN Process 75%', barWidth: '75%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      case 'Selesai':
-        return { label: 'Completed 100%', barWidth: '100%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-      default:
-        return { label: 'Processing 50%', barWidth: '50%', colorClass: 'bg-primary', textClass: 'text-on-surface-variant' };
-    }
-  };
-
-  // Status Badge Label and Color Mapper
-  const getStatusDetails = (c, isOverdue) => {
-    if (isOverdue) {
-      return { label: 'TERLAMBAT', bgClass: 'bg-error-container/20 text-error font-extrabold', icon: 'warning' };
-    }
-
-    switch (c.status) {
-      case 'Penyusunan Draf':
-      case 'Verifikasi Sertifikat':
-      case 'Validasi Pajak':
-      case 'Proses BPN':
-        return { label: 'Dalam Proses', bgClass: 'bg-blue-50 text-blue-700 font-semibold', icon: null };
-      case 'Pemeriksaan Dokumen':
-        return { label: 'Menunggu Klien', bgClass: 'bg-amber-50 text-amber-700 font-semibold', icon: null };
-      case 'Tanda Tangan Akta':
-        return { label: 'Review', bgClass: 'bg-purple-50 text-purple-700 font-semibold', icon: null };
-      case 'Selesai':
-        return { label: 'Selesai', bgClass: 'bg-green-50 text-green-700 font-bold', icon: null };
-      default:
-        return { label: c.status, bgClass: 'bg-surface-container text-on-surface-variant', icon: null };
-    }
-  };
-
-  // Format date as DD MMM YYYY (e.g. 01 Oct 2024)
-  const formatEstimationDate = (dateStr) => {
-    if (!dateStr) return '-';
+  // Format date as "May 20" or "20 Okt"
+  const formatShortDate = (dateStr) => {
+    if (!dateStr) return 'Tanpa Batas';
     try {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return dateStr;
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = months[date.getMonth()];
-      const year = date.getFullYear();
-      return `${day} ${month} ${year}`;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return `${date.getDate()} ${months[date.getMonth()]}`;
     } catch {
       return dateStr;
     }
   };
 
-  // Calculate days overdue
-  const getDaysOverdue = (dateStr) => {
-    if (!dateStr) return 0;
-    try {
-      const date = new Date(dateStr);
-      const today = new Date();
-      // zero out times
-      date.setHours(0,0,0,0);
-      today.setHours(0,0,0,0);
-      const diffTime = today - date;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays > 0 ? diffDays : 0;
-    } catch {
-      return 0;
-    }
+  // Get Priority info based on Overdue or Status
+  const getPriority = (c, isOverdue) => {
+    if (isOverdue) return { label: 'High', color: 'rose' };
+    if (c.status === 'Selesai') return { label: 'Low', color: 'mint' };
+    if (c.status === 'Tanda Tangan Akta' || c.status === 'Validasi Pajak') return { label: 'Medium', color: 'amber' };
+    return { label: 'Medium', color: 'amber' };
   };
 
-  // Filter cases based on searchVal, filterType, and filterStatus
+  // Get Service Category Pill Style
+  const getCategoryBadge = (c) => {
+    const isPPAT = c.category === 'ppat' || ['AJB', 'HIBAH', 'APHB', 'APHT', 'WARIS', 'ROYA', 'PECAH', 'GANTI', 'KONVERSI', 'HT'].includes(c.serviceType);
+    
+    if (isPPAT) {
+      return {
+        label: c.serviceType,
+        classes: 'bg-[#F2F1FD] text-[#6366F1] border border-[#E4E2FB]'
+      };
+    }
+    return {
+      label: c.serviceType === 'CV_PT' ? 'PT / CV' : c.serviceType,
+      classes: 'bg-[#EEF9FD] text-[#0284C7] border border-[#D2EEFB]'
+    };
+  };
+
+  // Filter cases based on active tab, search, and type
   const filteredCases = useMemo(() => {
     return cases.filter((c) => {
       // Search check
       const matchesSearch = 
         c.clientName.toLowerCase().includes(searchVal.toLowerCase()) ||
         c.caseNumber.toLowerCase().includes(searchVal.toLowerCase()) ||
-        (c.clientId && c.clientId.toLowerCase().includes(searchVal.toLowerCase()));
+        (c.propertyLocation && c.propertyLocation.toLowerCase().includes(searchVal.toLowerCase()));
 
-      // Type filter check
-      const matchesType = filterType === 'ALL' || c.serviceType === filterType;
+      if (!matchesSearch) return false;
 
-      // Status filter check
+      // Type filter
+      if (filterType !== 'ALL' && c.serviceType !== filterType) return false;
+
+      // Tab filter
       const isOverdue = checkOverdue(c.estimationDate, c.status);
-      let matchesStatus = true;
-
-      if (filterStatus !== 'ALL') {
-        if (filterStatus === 'TERLAMBAT') {
-          matchesStatus = isOverdue;
-        } else if (filterStatus === 'Dalam Proses') {
-          matchesStatus = !isOverdue && (c.status === 'Penyusunan Draf' || c.status === 'Verifikasi Sertifikat' || c.status === 'Validasi Pajak' || c.status === 'Proses BPN');
-        } else if (filterStatus === 'Review') {
-          matchesStatus = !isOverdue && c.status === 'Tanda Tangan Akta';
-        } else if (filterStatus === 'Menunggu Klien') {
-          matchesStatus = !isOverdue && c.status === 'Pemeriksaan Dokumen';
-        } else if (filterStatus === 'Selesai') {
-          matchesStatus = c.status === 'Selesai';
-        }
+      if (activeTab === 'To Do') {
+        return c.status === 'Pemeriksaan Dokumen';
+      }
+      if (activeTab === 'In Progress') {
+        return c.status !== 'Selesai' && c.status !== 'Pemeriksaan Dokumen';
+      }
+      if (activeTab === 'Done') {
+        return c.status === 'Selesai';
       }
 
-      return matchesSearch && matchesType && matchesStatus;
+      return true;
+    }).sort((a, b) => {
+      if (sortBy === 'dueDate') {
+        return (new Date(a.estimationDate || '2099-01-01')) - (new Date(b.estimationDate || '2099-01-01'));
+      }
+      if (sortBy === 'client') {
+        return a.clientName.localeCompare(b.clientName);
+      }
+      return 0;
     });
-  }, [cases, searchVal, filterType, filterStatus]);
+  }, [cases, searchVal, filterType, activeTab, sortBy]);
 
-  // Reset pagination when filters change
+  // Reset page when filter changes
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchVal, filterType, filterStatus]);
+  }, [activeTab, searchVal, filterType, sortBy]);
 
-  // Pagination math
   const totalPages = Math.ceil(filteredCases.length / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredCases.slice(indexOfFirstItem, indexOfLastItem);
+  const currentItems = filteredCases.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const tabs = ['All', 'To Do', 'In Progress', 'Done'];
 
   return (
-    <section className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden flex flex-col shadow-sm text-left font-sans">
-      
-      {/* Header with Title and Filters */}
-      <div className="px-6 py-4 border-b border-[#F1F5F9] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h4 className="text-[15px] font-bold text-on-surface">Registry File Aktif</h4>
-        
-        <div className="flex gap-2.5 items-center">
-          {/* Dropdown: Semua Tipe */}
-          <select 
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="bg-[#F8F9FA] border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[11px] font-bold text-on-surface-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 cursor-pointer"
-          >
-            <option value="ALL">Semua Tipe</option>
-            {serviceTypeOptions.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+    <div className="bg-white border border-slate-200/80 rounded-[28px] p-6 shadow-[0_10px_30px_rgba(112,144,176,0.06)] text-left select-none relative">
+      {/* Top Header & Filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div>
+          <h3 className="text-[18px] font-extrabold text-slate-800 tracking-tight">
+            My Tasks
+          </h3>
 
-          {/* Dropdown: Filter Status */}
-          <select 
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-[#F8F9FA] border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[11px] font-bold text-on-surface-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 cursor-pointer"
-          >
-            <option value="ALL">Filter Status</option>
-            <option value="TERLAMBAT">▲ Terlambat</option>
-            <option value="Dalam Proses">Dalam Proses</option>
-            <option value="Menunggu Klien">Menunggu Klien</option>
-            <option value="Review">Review</option>
-            <option value="Selesai">Selesai</option>
-          </select>
+          {/* Clean Pill Tabs */}
+          <div className="flex items-center gap-2 mt-2">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`text-[12px] font-bold px-3 py-1 rounded-xl transition-all relative ${
+                    isActive
+                      ? 'text-[#6366F1] font-black'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >
+                  {tab}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-3 right-3 h-[2.5px] bg-[#6366F1] rounded-full" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Tools (Filter, Sort By) */}
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {/* Filter dropdown */}
+          <div className="relative">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="bg-[#F8F9FA] border border-slate-200 rounded-xl px-3 py-1.5 text-[11.5px] font-bold text-slate-600 focus:outline-none focus:border-[#6366F1] cursor-pointer"
+            >
+              <option value="ALL">Semua Tipe</option>
+              <option value="AJB">Akta Jual Beli (AJB)</option>
+              <option value="HIBAH">Hibah</option>
+              <option value="APHT">APHT</option>
+              <option value="WARIS">Waris</option>
+              <option value="ROYA">Roya</option>
+              <option value="PT">PT / CV</option>
+            </select>
+          </div>
+
+          {/* Sort By Due Date */}
+          <div className="flex items-center bg-[#F8F9FA] border border-slate-200 rounded-xl px-3 py-1.5 text-[11.5px] font-bold text-slate-600">
+            <span className="text-slate-400 mr-1.5">Sort by:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="dueDate">Due Date</option>
+              <option value="client">Client Name</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Table Container */}
-      <div className="overflow-x-auto w-full custom-scrollbar">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8F9FA]">
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">No. File</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">Nama Klien</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">Tipe Layanan</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">Progress</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">Perkiraan Selesai</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 whitespace-nowrap">Status</th>
-              <th className="px-6 py-3.5 text-[10.5px] font-bold uppercase tracking-wider text-on-surface-variant/80 text-center whitespace-nowrap">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
-            {currentItems.length > 0 ? (
-              currentItems.map((c) => {
-                const isOverdue = checkOverdue(c.estimationDate, c.status);
-                const { initials, colorClass } = getAvatarStyle(c.clientName);
-                const progress = getProgressDetails(c, isOverdue);
-                const statusInfo = getStatusDetails(c, isOverdue);
-                const daysOverdue = getDaysOverdue(c.estimationDate);
+      {/* Task Rows List */}
+      <div className="divide-y divide-slate-100">
+        {currentItems.length > 0 ? (
+          currentItems.map((c) => {
+            const isOverdue = checkOverdue(c.estimationDate, c.status);
+            const isCompleted = c.status === 'Selesai';
+            const priority = getPriority(c, isOverdue);
+            const catBadge = getCategoryBadge(c);
 
-                // Service category color theme mapping
-                const isPpat = c.category === 'ppat' || ['AJB', 'HIBAH', 'APHB', 'APHT', 'WARIS', 'ROYA', 'PECAH', 'GANTI', 'KONVERSI', 'HT'].includes(c.serviceType);
-                const badgeColorTheme = isPpat 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-100' 
-                  : 'bg-purple-50 text-purple-700 border border-purple-100';
-
-                return (
-                  <tr 
-                    key={c.id} 
-                    className={`hover:bg-[#F8F9FA] transition-colors group ${
-                      isOverdue ? 'bg-[#FEF2F2]/50' : 'bg-white'
+            return (
+              <div
+                key={c.id}
+                className="py-3.5 flex items-center justify-between gap-4 hover:bg-[#F8FAFC] px-2 rounded-2xl transition-colors group cursor-pointer"
+                onClick={() => navigate(`/staff/documents/${c.id}`)}
+              >
+                {/* Left: Checkmark & Title */}
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                  {/* Circular Soft Checkbox Button */}
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Toggle action
+                    }}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                      isCompleted 
+                        ? 'bg-[#10B981] border-[#10B981] text-white shadow-xs' 
+                        : 'border-slate-300 hover:border-[#6366F1] bg-white'
                     }`}
                   >
-                    {/* NO. FILE */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        {isOverdue && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0"></span>
-                        )}
-                        <span className="text-[12.5px] font-bold text-on-surface-variant">
-                          {c.caseNumber}
-                        </span>
-                      </div>
-                    </td>
+                    {isCompleted && <CheckCircle2 className="w-4 h-4 stroke-[3]" />}
+                  </div>
 
-                    {/* NAMA KLIEN (Initials Avatar + Name) */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center font-bold text-[11.5px] shrink-0`}>
-                          {initials}
-                        </div>
-                        <span className="text-[13px] font-bold text-on-surface">
-                          {c.clientName}
-                        </span>
-                      </div>
-                    </td>
+                  {/* Task Document Description */}
+                  <div className="min-w-0">
+                    <p className={`text-[13.5px] font-bold text-slate-800 tracking-tight truncate ${
+                      isCompleted ? 'line-through text-slate-400' : ''
+                    }`}>
+                      {c.clientName}
+                    </p>
+                    <p className="text-[11px] font-semibold text-slate-400 truncate">
+                      {c.caseNumber} &bull; {c.propertyLocation || 'Lokasi Terdaftar'}
+                    </p>
+                  </div>
+                </div>
 
-                    {/* TIPE LAYANAN */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-[10.5px] font-bold tracking-wide uppercase ${badgeColorTheme}`}>
-                        {c.serviceType === 'CV_PT' ? 'PT' : c.serviceType}
-                      </span>
-                    </td>
+                {/* Middle Right: Category Pill, Due Date, Priority */}
+                <div className="flex items-center gap-4 shrink-0">
+                  {/* Category Pill */}
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${catBadge.classes} hidden md:inline-flex`}>
+                    {catBadge.label}
+                  </span>
 
-                    {/* PROGRESS BAR & STAGE LABEL */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <div className="flex flex-col text-left min-w-[130px]">
-                        <span className={`text-[11px] font-bold ${progress.textClass}`}>
-                          {progress.label}
-                        </span>
-                        <div className="w-full bg-[#E2E8F0] h-1.5 rounded-full overflow-hidden mt-1.5">
-                          <div className={`h-full rounded-full ${progress.colorClass}`} style={{ width: progress.barWidth }}></div>
-                        </div>
-                      </div>
-                    </td>
+                  {/* Due Date with Calendar Icon */}
+                  <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-500 min-w-[70px]">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{formatShortDate(c.estimationDate)}</span>
+                  </div>
 
-                    {/* PERKIRAAN SELESAI */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <div className="flex flex-col text-left">
-                        <span className="text-[12.5px] font-medium text-on-surface">
-                          {formatEstimationDate(c.estimationDate)}
-                        </span>
-                        {isOverdue && daysOverdue > 0 && (
-                          <span className="text-[10px] text-error font-bold mt-0.5 leading-none">
-                            {daysOverdue} days overdue
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                  {/* Priority Pill */}
+                  <span className={`px-3 py-0.5 rounded-full text-[10.5px] font-bold min-w-[62px] text-center ${
+                    priority.color === 'rose'
+                      ? 'bg-[#FDF0F3] text-[#EF4444] border border-[#FCDCE3]'
+                      : priority.color === 'amber'
+                      ? 'bg-[#FEF8EB] text-[#D97706] border border-[#FDEECC]'
+                      : 'bg-[#EDFAF3] text-[#10B981] border border-[#D5F5E4]'
+                  }`}>
+                    {priority.label}
+                  </span>
 
-                    {/* STATUS */}
-                    <td className="px-6 py-4.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider ${statusInfo.bgClass}`}>
-                        {statusInfo.icon && (
-                          <span className="material-symbols-outlined text-[12px] font-extrabold">{statusInfo.icon}</span>
-                        )}
-                        <span>{statusInfo.label}</span>
-                      </span>
-                    </td>
+                  {/* 3-dots Menu */}
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setActiveMenuId(activeMenuId === c.id ? null : c.id)}
+                      className="w-7 h-7 rounded-xl hover:bg-slate-200/60 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
 
-                    {/* AKSI (Detail/Open, Edit/Pencil, Delete/Hapus) */}
-                    <td className="px-6 py-4.5 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center gap-3">
-                        {/* Open Detail Page */}
-                        <button 
-                          onClick={() => navigate(`/staff/documents/${c.id}`)}
-                          className="w-7 h-7 rounded-lg hover:bg-surface-container border border-transparent hover:border-[#E2E8F0] flex items-center justify-center text-on-surface-variant transition-colors"
-                          title="Buka pelacakan berkas"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">visibility</span>
-                        </button>
-                        
-                        {/* Edit Action */}
-                        <button 
-                          onClick={() => navigate(`/staff/documents/${c.id}`)}
-                          className="w-7 h-7 rounded-lg hover:bg-surface-container border border-transparent hover:border-[#E2E8F0] flex items-center justify-center text-on-surface-variant transition-colors"
-                          title="Edit berkas"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">edit</span>
-                        </button>
-
-                        {/* More Action */}
-                        <button 
+                    {activeMenuId === c.id && (
+                      <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-1 animate-in fade-in duration-150">
+                        <button
                           onClick={() => {
-                            if (window.confirm(`Apakah Anda yakin ingin menghapus berkas milik ${c.clientName}?`)) {
-                              deleteCase(c.id);
-                            }
+                            setActiveMenuId(null);
+                            navigate(`/staff/documents/${c.id}`);
                           }}
-                          className="w-7 h-7 rounded-lg hover:bg-error-container/20 border border-transparent hover:border-[#FCA5A5]/40 flex items-center justify-center text-on-surface-variant hover:text-error transition-colors"
-                          title="Hapus berkas"
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 rounded-lg"
                         >
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Detail</span>
                         </button>
+                        {isOwner && (
+                          <button
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              if (window.confirm(`Hapus berkas ${c.clientName}?`)) {
+                                deleteCase(c.id);
+                              }
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus</span>
+                          </button>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td colSpan="7" className="px-6 py-12 text-center text-on-surface-variant/80 font-medium text-[13px]">
-                  Tidak ada berkas yang sesuai dengan kriteria filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Footer */}
-      <div className="px-6 py-4 border-t border-[#F1F5F9] bg-white flex items-center justify-between flex-col sm:flex-row gap-4 select-none">
-        <p className="text-[12px] text-on-surface-variant/80 font-medium">
-          {filteredCases.length > 0 ? (
-            <>
-              Menampilkan <span className="font-semibold text-on-surface">{indexOfFirstItem + 1}</span> hingga <span className="font-semibold text-on-surface">{Math.min(indexOfLastItem, filteredCases.length)}</span> dari <span className="font-semibold text-on-surface">{filteredCases.length}</span> hasil
-            </>
-          ) : (
-            'Menampilkan 0 dari 0 hasil'
-          )}
-        </p>
-
-        {filteredCases.length > itemsPerPage && (
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-3.5 py-1.5 border border-[#E2E8F0] hover:bg-surface-container-low rounded-lg text-[11.5px] font-bold text-on-surface-variant transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Sebelumnya
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="px-3.5 py-1.5 border border-[#E2E8F0] hover:bg-surface-container-low rounded-lg text-[11.5px] font-bold text-on-surface-variant transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Selanjutnya
-            </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="py-12 text-center text-slate-400 text-[13px] font-medium">
+            Tidak ada berkas yang sesuai dengan filter.
           </div>
         )}
       </div>
 
-    </section>
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[12px] text-slate-400 font-semibold">
+          <span>
+            Menampilkan halaman {currentPage} dari {totalPages}
+          </span>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 bg-[#F8F9FA] border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+            >
+              Sebelumnya
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 bg-[#F8F9FA] border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

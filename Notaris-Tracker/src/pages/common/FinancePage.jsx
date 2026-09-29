@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCases } from '../../hooks/useCases';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import toast from 'react-hot-toast';
@@ -49,7 +49,7 @@ const parseDotsToNumber = (str) => {
   return Math.round(parsed * multiplier);
 };
 
-const CurrencyInput = ({ id, value, onChange, className, placeholder, required = false }) => {
+const CurrencyInput = ({ id, value, onChange, className, placeholder, required = false, disabled = false }) => {
   const [tempValue, setTempValue] = useState(formatNumberWithDots(value));
 
   useEffect(() => {
@@ -57,6 +57,7 @@ const CurrencyInput = ({ id, value, onChange, className, placeholder, required =
   }, [value]);
 
   const handleChange = (e) => {
+    if (disabled) return;
     const rawVal = e.target.value.replace(/\D/g, '');
     if (!rawVal) {
       setTempValue('');
@@ -73,6 +74,7 @@ const CurrencyInput = ({ id, value, onChange, className, placeholder, required =
       id={id}
       type="text"
       required={required}
+      disabled={disabled}
       value={tempValue}
       onChange={handleChange}
       className={className}
@@ -242,96 +244,96 @@ export const FinancePage = () => {
       </div>
 
       {/* Financial KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 select-none">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 select-none">
         {/* KPI 1: Target Pendapatan */}
-        <div className="bg-white border border-[#E2E8F0] p-6 rounded-2xl shadow-sm relative overflow-hidden text-left flex flex-col justify-between min-h-[120px]">
+        <div className="bg-[#EDFAF3] border border-[#D5F5E4] p-5 rounded-[22px] flex flex-col justify-between shadow-[0_8px_20px_rgba(16,185,129,0.06)] min-h-[120px]">
           <div>
-            <p className="text-on-surface-variant/70 font-bold text-[12px] uppercase tracking-wider">
+            <p className="text-emerald-800 font-bold text-[11.5px] uppercase tracking-wider">
               Total Target Biaya Berkas
             </p>
-            <h3 className="text-[22px] font-extrabold text-on-surface mt-2">
+            <h3 className="text-[22px] font-black text-emerald-950 mt-1.5">
               Rp {stats.totalTarget.toLocaleString('id-ID')}
             </h3>
           </div>
-          <div className="w-full bg-[#F1F5F9] h-1.5 rounded-full overflow-hidden mt-6">
-            <div className="bg-primary h-full rounded-full w-full"></div>
+          <div className="w-full bg-emerald-200/50 h-2 rounded-full overflow-hidden mt-4">
+            <div className="bg-[#10B981] h-full rounded-full w-full"></div>
           </div>
         </div>
 
         {/* KPI 2: Dana Masuk */}
-        <div className="bg-white border border-[#E2E8F0] p-6 rounded-2xl shadow-sm relative overflow-hidden text-left flex flex-col justify-between min-h-[120px]">
+        <div className="bg-[#EEF9FD] border border-[#D2EEFB] p-5 rounded-[22px] flex flex-col justify-between shadow-[0_8px_20px_rgba(14,165,233,0.06)] min-h-[120px]">
           <div>
-            <p className="text-secondary/80 font-bold text-[12px] uppercase tracking-wider flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-secondary"></span>
+            <p className="text-sky-800 font-bold text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-sky-500"></span>
               Dana Masuk (Diterima)
             </p>
-            <h3 className="text-[22px] font-extrabold text-secondary mt-2">
+            <h3 className="text-[22px] font-black text-sky-950 mt-1.5">
               Rp {stats.totalReceived.toLocaleString('id-ID')}
             </h3>
           </div>
-          <div className="w-full bg-[#F1F5F9] h-1.5 rounded-full overflow-hidden mt-6">
+          <div className="w-full bg-sky-200/50 h-2 rounded-full overflow-hidden mt-4">
             <div 
-              className="bg-secondary h-full rounded-full transition-all duration-500" 
+              className="bg-[#0EA5E9] h-full rounded-full transition-all duration-500" 
               style={{ width: `${stats.percentPaid}%` }}
             ></div>
           </div>
         </div>
 
         {/* KPI 3: Piutang Berjalan */}
-        <div className="bg-white border border-[#E2E8F0] p-6 rounded-2xl shadow-sm relative overflow-hidden text-left flex flex-col justify-between min-h-[120px]">
+        <div className="bg-[#FDF0F3] border border-[#FCDCE3] p-5 rounded-[22px] flex flex-col justify-between shadow-[0_8px_20px_rgba(239,68,68,0.06)] min-h-[120px]">
           <div>
-            <p className="text-error/80 font-bold text-[12px] uppercase tracking-wider flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-error animate-pulse"></span>
+            <p className="text-rose-800 font-bold text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
               Piutang Berjalan (Sisa Tagihan)
             </p>
-            <h3 className="text-[22px] font-extrabold text-error mt-2">
+            <h3 className="text-[22px] font-black text-rose-950 mt-1.5">
               Rp {stats.totalOutstanding.toLocaleString('id-ID')}
             </h3>
           </div>
-          <div className="w-full bg-[#F1F5F9] h-1.5 rounded-full overflow-hidden mt-6">
+          <div className="w-full bg-rose-200/50 h-2 rounded-full overflow-hidden mt-4">
             <div 
-              className="bg-error h-full rounded-full transition-all duration-500"
+              className="bg-[#EF4444] h-full rounded-full transition-all duration-500"
               style={{ width: `${100 - stats.percentPaid}%` }}
             ></div>
           </div>
         </div>
 
         {/* KPI 4: Persentase Realisasi */}
-        <div className="bg-primary-soft p-6 rounded-2xl border border-primary/20 flex flex-col justify-between min-h-[120px]">
+        <div className="bg-[#F3F2FD] border border-[#E4E2FB] p-5 rounded-[22px] flex flex-col justify-between shadow-[0_8px_20px_rgba(99,102,241,0.06)] min-h-[120px]">
           <div>
-            <p className="text-primary font-bold text-[12px] uppercase tracking-wider">
+            <p className="text-[#6366F1] font-bold text-[11.5px] uppercase tracking-wider">
               Realisasi Pembayaran
             </p>
-            <div className="flex items-baseline gap-2 mt-2">
-              <h3 className="text-[36px] font-black text-primary leading-none">
+            <div className="flex items-baseline gap-2 mt-1.5">
+              <h3 className="text-[32px] font-black text-[#6366F1] leading-none">
                 {stats.percentPaid}%
               </h3>
-              <span className="text-[12px] font-bold text-primary-dark">Lunas / DP</span>
+              <span className="text-[11.5px] font-bold text-slate-500">Lunas / DP</span>
             </div>
           </div>
-          <p className="text-[11px] text-primary-dark/80 font-semibold leading-none mt-4">
+          <p className="text-[11px] text-slate-400 font-semibold leading-none mt-3">
             Dari seluruh berkas yang didaftarkan.
           </p>
         </div>
       </div>
 
       {/* Table & Filters Card */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200/80 rounded-[28px] shadow-[0_10px_30px_rgba(112,144,176,0.06)] overflow-hidden">
         
         {/* Filters Panel */}
-        <div className="p-5 border-b border-[#F1F5F9] flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="w-full md:w-80 relative">
-            <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+            <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
             <input
               type="text"
               placeholder="Cari Klien / No. Berkas..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-body-md text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:border-2"
+              className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200 rounded-2xl text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#6366F1] font-medium"
             />
           </div>
 
-          <div className="flex flex-wrap gap-4 w-full md:w-auto items-center">
+          <div className="flex flex-wrap gap-3 w-full md:w-auto items-center">
             {/* Date Filter */}
             <DateFilter
               date={filterDate}
@@ -343,32 +345,36 @@ export const FinancePage = () => {
             />
 
             {/* Filter Layanan */}
-            <div className="flex-1 md:w-44">
+            <div className="relative flex-1 sm:flex-none">
               <select
                 value={serviceFilter}
                 onChange={(e) => setServiceFilter(e.target.value)}
-                className="w-full px-3 py-2.5 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface font-semibold focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-2xl pl-3.5 pr-8 h-10 text-[12px] font-bold text-slate-700 focus:outline-none focus:border-[#6366F1] shadow-xs cursor-pointer appearance-none transition-all"
               >
-                <option value="Semua">Semua Layanan</option>
                 {serviceOptions.map((opt) => (
                   <option key={opt} value={opt}>{opt === 'Semua' ? 'Semua Layanan' : opt}</option>
                 ))}
               </select>
+              <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[16px] pointer-events-none">
+                expand_more
+              </span>
             </div>
 
             {/* Filter Status Bayar */}
-            <div className="flex-1 md:w-44">
+            <div className="relative flex-1 sm:flex-none">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2.5 bg-white border border-outline-variant rounded-xl text-body-md text-on-surface font-semibold focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-2xl pl-3.5 pr-8 h-10 text-[12px] font-bold text-slate-700 focus:outline-none focus:border-[#6366F1] shadow-xs cursor-pointer appearance-none transition-all"
               >
-                <option disabled>Filter Status Bayar</option>
                 <option value="Semua">Semua Pembayaran</option>
                 <option value="Belum Lunas">Belum Lunas</option>
-                <option value="DP">DP (Down Payment)</option>
+                <option value="DP">DP (Sebagian)</option>
                 <option value="Lunas">Lunas</option>
               </select>
+              <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[16px] pointer-events-none">
+                expand_more
+              </span>
             </div>
           </div>
         </div>

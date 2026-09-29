@@ -4,8 +4,23 @@ import { supabase } from '../../lib/supabase';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { formatDate } from '../../utils/formatDate';
 import { SERVICE_TYPES } from '../../constants/serviceTypes';
-
 import DateFilter from '../../components/common/DateFilter';
+import { 
+  Activity, 
+  CheckCircle2, 
+  UploadCloud, 
+  FileEdit, 
+  Search, 
+  Filter, 
+  Clock, 
+  User, 
+  FileText, 
+  ArrowRight, 
+  X, 
+  ShieldCheck,
+  Calendar,
+  Sparkles
+} from 'lucide-react';
 
 export const StaffActivityPage = () => {
   const { user, profile } = useAuth();
@@ -166,14 +181,34 @@ export const StaffActivityPage = () => {
     return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
   };
 
+  const getActionIcon = (type) => {
+    switch (type) {
+      case 'Upload':
+        return <UploadCloud className="w-4 h-4 text-[#6366F1]" />;
+      case 'Tanda Tangan':
+        return <FileEdit className="w-4 h-4 text-[#F59E0B]" />;
+      case 'Selesai':
+        return <CheckCircle2 className="w-4 h-4 text-[#10B981]" />;
+      default:
+        return <Activity className="w-4 h-4 text-[#3B82F6]" />;
+    }
+  };
+
   // Render Owner View (Card-based)
   if (profile?.role === 'owner') {
     return (
-      <div className="space-y-stack-lg text-left font-sans animate-fade-in">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+      <div className="space-y-6 text-left font-sans animate-fade-in">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h2 className="font-headline-lg text-headline-lg text-on-surface font-extrabold text-[26px]">Aktivitas Kerja Staf</h2>
-            <p className="text-body-lg text-on-surface-variant mt-1 text-[13px]">Pantau ringkasan dan riwayat seluruh aktivitas operasional staf secara real-time.</p>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
+              <span>Aktivitas Kerja Staf</span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#EEF2FF] text-[#6366F1] border border-[#E0E7FF]">
+                Real-Time
+              </span>
+            </h1>
+            <p className="text-[13px] text-slate-400 font-medium mt-1">
+              Pantau ringkasan performa dan riwayat seluruh aktivitas operasional tim staf secara terpusat.
+            </p>
           </div>
           <DateFilter
             date={filterDate}
@@ -186,26 +221,29 @@ export const StaffActivityPage = () => {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <span className="material-symbols-outlined animate-spin text-primary text-[32px]">sync</span>
-            <span className="ml-2 text-on-surface-variant font-medium">Memuat riwayat aktivitas...</span>
+          <div className="flex justify-center items-center py-20">
+            <div className="w-9 h-9 border-3 border-[#6366F1] border-t-transparent rounded-full animate-spin"></div>
+            <span className="ml-3 text-slate-500 font-bold text-sm">Memuat aktivitas staf...</span>
           </div>
         ) : staffCardsData.length === 0 ? (
-          <div className="text-center py-12 bg-surface-container-lowest border border-outline-variant rounded-xl p-8 card-shadow">
-            <span className="material-symbols-outlined text-[48px] text-on-surface-variant mb-2">history</span>
-            <p className="text-on-surface-variant font-bold">Belum ada staf terdaftar atau aktivitas terekam.</p>
+          <div className="text-center py-16 soft-card p-8">
+            <div className="w-16 h-16 bg-[#EEF2FF] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-[inset_0_2px_4px_rgba(99,102,241,0.1)]">
+              <Activity className="w-8 h-8 text-[#6366F1]" />
+            </div>
+            <h3 className="font-extrabold text-slate-700 text-base">Belum Ada Riwayat Aktivitas</h3>
+            <p className="text-slate-400 text-xs mt-1">Belum ada staf terdaftar atau aktivitas baru yang terekam dalam periode ini.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter-grid">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {staffCardsData.map((st) => (
               <div 
                 key={st.id}
                 onClick={() => setSelectedStaff(st)}
-                className="bg-surface-container-lowest border border-outline-variant p-6 rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col justify-between group"
+                className="soft-card p-6 cursor-pointer hover:-translate-y-1.5 transition-all duration-200 flex flex-col justify-between group"
               >
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold text-[16px] overflow-hidden">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-13 h-13 bg-gradient-to-tr from-[#6366F1] to-[#8B5CF6] rounded-2xl flex items-center justify-center text-white font-black text-[15px] overflow-hidden shadow-[0_6px_16px_rgba(99,102,241,0.3)] shrink-0">
                       {st.avatarUrl ? (
                         <img src={st.avatarUrl} alt={st.name} className="w-full h-full object-cover" />
                       ) : (
@@ -213,25 +251,29 @@ export const StaffActivityPage = () => {
                       )}
                     </div>
                     <div>
-                      <h4 className="font-bold text-on-surface text-[15px] group-hover:text-primary transition-colors">{st.name}</h4>
-                      <p className="text-[12px] text-on-surface-variant font-medium">{st.title}</p>
+                      <h4 className="font-extrabold text-slate-800 text-[15px] group-hover:text-[#6366F1] transition-colors">{st.name}</h4>
+                      <p className="text-[12px] text-slate-400 font-semibold">{st.title}</p>
                     </div>
                   </div>
 
-                  <div className="bg-surface-container-low p-3 rounded-lg flex justify-between items-center text-[12px]">
-                    <span className="text-on-surface-variant font-medium">Total Aktivitas</span>
-                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">{st.totalActivities} Tindakan</span>
+                  <div className="bg-[#F8FAFC] border border-slate-100 p-3.5 rounded-2xl flex justify-between items-center text-[12px]">
+                    <span className="text-slate-500 font-semibold">Total Log Aksi</span>
+                    <span className="badge-3d-purple px-3 py-1 text-xs">
+                      {st.totalActivities} Tindakan
+                    </span>
                   </div>
 
-                  <div className="text-[11.5px] leading-relaxed text-on-surface-variant">
-                    <span className="font-bold text-[10px] uppercase tracking-wider text-primary block mb-1">Terakhir Aktif</span>
-                    <p className="line-clamp-2 italic">"{st.lastActive}"</p>
+                  <div className="text-[12px] leading-relaxed text-slate-500 bg-[#FAFAFA] p-3 rounded-2xl border border-slate-100">
+                    <span className="font-black text-[10px] uppercase tracking-wider text-[#6366F1] block mb-1">
+                      Aktivitas Terakhir
+                    </span>
+                    <p className="line-clamp-2 italic text-slate-600 font-medium">"{st.lastActive}"</p>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-outline-variant flex justify-between items-center text-primary font-bold text-[12px]">
-                  <span>Lihat Selengkapnya</span>
-                  <span className="material-symbols-outlined text-[16px] group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                <div className="mt-5 pt-4 border-t border-slate-100 flex justify-between items-center text-[#6366F1] font-bold text-[12.5px]">
+                  <span>Lihat Seluruh Log</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
                 </div>
               </div>
             ))}
@@ -240,18 +282,18 @@ export const StaffActivityPage = () => {
 
         {/* Modal Detail Aktivitas Staf */}
         {selectedStaff && (
-          <div className="fixed inset-0 bg-inverse-surface/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-lg p-6 relative shadow-xl text-left animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-[28px] w-full max-w-lg p-6 relative shadow-[0_20px_60px_rgba(0,0,0,0.2)] text-left animate-fade-in flex flex-col max-h-[90vh]">
               <button 
                 type="button"
                 onClick={() => setSelectedStaff(null)}
-                className="absolute top-4 right-4 text-on-surface-variant hover:text-on-surface transition-colors"
+                className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full p-1.5 transition-colors"
               >
-                <span className="material-symbols-outlined text-[24px]">close</span>
+                <X className="w-5 h-5" />
               </button>
 
-              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-outline-variant">
-                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold overflow-hidden">
+              <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-slate-100">
+                <div className="w-13 h-13 bg-gradient-to-tr from-[#6366F1] to-[#8B5CF6] rounded-2xl flex items-center justify-center text-white font-black shadow-md overflow-hidden">
                   {selectedStaff.avatarUrl ? (
                     <img src={selectedStaff.avatarUrl} alt={selectedStaff.name} className="w-full h-full object-cover" />
                   ) : (
@@ -259,35 +301,38 @@ export const StaffActivityPage = () => {
                   )}
                 </div>
                 <div>
-                  <h3 className="font-bold text-on-surface text-[17px]">{selectedStaff.name}</h3>
-                  <p className="text-[12px] text-primary font-semibold">{selectedStaff.title}</p>
+                  <h3 className="font-extrabold text-slate-800 text-lg">{selectedStaff.name}</h3>
+                  <p className="text-[12px] text-[#6366F1] font-bold">{selectedStaff.title}</p>
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
-                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Seluruh Riwayat Aktivitas</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-slate-400 font-extrabold uppercase tracking-wider">Riwayat Aktivitas ({selectedStaff.logs.length})</p>
+                </div>
                 
                 {selectedStaff.logs.length === 0 ? (
-                  <p className="text-[13px] text-on-surface-variant italic text-center py-8">Belum ada aktivitas terekam dari staf ini.</p>
+                  <p className="text-[13px] text-slate-400 italic text-center py-8">Belum ada aktivitas terekam dari staf ini.</p>
                 ) : (
-                  <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-outline-variant">
+                  <div className="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
                     {selectedStaff.logs.map((act) => (
-                      <div key={act.id} className="relative">
-                        <div className="absolute -left-[22px] top-1.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white"></div>
-                        <div className="flex justify-between items-start">
+                      <div key={act.id} className="relative group">
+                        <div className="absolute -left-[20px] top-1.5 w-3.5 h-3.5 bg-[#6366F1] rounded-full border-2 border-white shadow-xs"></div>
+                        <div className="bg-[#F8FAFC] border border-slate-100 hover:border-[#6366F1]/30 p-3 rounded-2xl flex justify-between items-start transition-all">
                           <div>
-                            <p className="text-body-md text-on-surface font-bold text-[13px]">
+                            <p className="text-slate-800 font-bold text-[13px]">
                               {act.action}
                             </p>
-                            <p className="text-[11px] text-primary font-semibold mt-0.5">
+                            <p className="text-[11.5px] text-[#6366F1] font-semibold mt-0.5">
                               {act.target}
                             </p>
-                            <p className="text-[10px] text-on-surface-variant mt-1">
+                            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-medium">
+                              <Clock className="w-3 h-3" />
                               {act.timestamp}
                             </p>
                           </div>
-                          <div className="p-1.5 bg-surface-container-high rounded text-on-surface-variant">
-                            <span className="material-symbols-outlined text-[16px]">{act.icon}</span>
+                          <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-100">
+                            {getActionIcon(act.type)}
                           </div>
                         </div>
                       </div>
@@ -304,11 +349,18 @@ export const StaffActivityPage = () => {
 
   // Render Staff View (Table & Timeline for self-only)
   return (
-    <div className="space-y-stack-lg text-left font-sans animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+    <div className="space-y-6 text-left font-sans animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="font-headline-lg text-headline-lg text-on-surface font-extrabold text-[26px]">Aktivitas Kerja Saya</h2>
-          <p className="text-body-lg text-on-surface-variant mt-1 text-[13px]">Tinjau seluruh riwayat pengerjaan dokumen yang Anda lakukan.</p>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
+            <span>Aktivitas Kerja Saya</span>
+            <span className="badge-3d-mint px-2.5 py-0.5 text-xs">
+              Personal
+            </span>
+          </h1>
+          <p className="text-[13px] text-slate-400 font-medium mt-1">
+            Tinjau seluruh riwayat pengerjaan berkas, unggahan dokumen, dan verifikasi yang Anda lakukan.
+          </p>
         </div>
         <DateFilter
           date={filterDate}
@@ -321,34 +373,48 @@ export const StaffActivityPage = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: 'Total Tindakan', value: myStats.total, icon: 'history', color: 'text-primary', bg: 'bg-primary/10' },
-          { label: 'Penyelesaian Akta', value: myStats.completed, icon: 'check_circle', color: 'text-secondary', bg: 'bg-secondary/10' },
-          { label: 'Unggah Berkas', value: myStats.upload, icon: 'upload_file', color: 'text-tertiary', bg: 'bg-tertiary/10' },
-        ].map((card) => (
-          <div key={card.label} className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl flex items-center gap-4 shadow-sm">
-            <div className={`w-10 h-10 ${card.bg} rounded-lg flex items-center justify-center`}>
-              <span className={`material-symbols-outlined ${card.color} text-[22px]`}>{card.icon}</span>
-            </div>
-            <div>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">{card.label}</p>
-              <p className={`font-extrabold text-[20px] mt-0.5 ${card.color}`}>{card.value}</p>
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="soft-card-purple p-5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_12px_rgba(99,102,241,0.2)]">
+            <Activity className="w-6 h-6 text-[#6366F1]" />
           </div>
-        ))}
+          <div>
+            <p className="text-[11px] font-extrabold text-[#6366F1] uppercase tracking-wider">Total Tindakan</p>
+            <p className="text-2xl font-black text-slate-800 mt-0.5">{myStats.total}</p>
+          </div>
+        </div>
+
+        <div className="soft-card-mint p-5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_12px_rgba(16,185,129,0.2)]">
+            <CheckCircle2 className="w-6 h-6 text-[#10B981]" />
+          </div>
+          <div>
+            <p className="text-[11px] font-extrabold text-[#10B981] uppercase tracking-wider">Penyelesaian Berkas</p>
+            <p className="text-2xl font-black text-slate-800 mt-0.5">{myStats.completed}</p>
+          </div>
+        </div>
+
+        <div className="soft-card-amber p-5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_12px_rgba(245,158,11,0.2)]">
+            <UploadCloud className="w-6 h-6 text-[#F59E0B]" />
+          </div>
+          <div>
+            <p className="text-[11px] font-extrabold text-[#F59E0B] uppercase tracking-wider">Unggah Dokumen</p>
+            <p className="text-2xl font-black text-slate-800 mt-0.5">{myStats.upload}</p>
+          </div>
+        </div>
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl flex flex-wrap gap-3 items-center justify-between shadow-sm">
+      <div className="soft-card p-4 flex flex-wrap gap-3 items-center justify-between">
         <div className="relative flex-1 min-w-[240px]">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari aktivitas atau nama berkas..."
-            className="w-full pl-9 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-lg text-[13px] focus:ring-primary focus:border-primary"
+            placeholder="Cari aktivitas, klien, atau nomor berkas..."
+            className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200/80 rounded-2xl text-[13px] font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#6366F1] focus:bg-white transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
           />
         </div>
 
@@ -357,50 +423,54 @@ export const StaffActivityPage = () => {
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-[12px] font-bold text-on-surface-variant"
+            className="bg-[#F8FAFC] border border-slate-200/80 rounded-2xl px-3.5 py-2.5 text-[12px] font-bold text-slate-600 focus:outline-none focus:border-[#6366F1] focus:bg-white transition-all"
           >
-            <option value="Semua">Semua Tipe</option>
-            <option value="Upload">Upload File</option>
+            <option value="Semua">Semua Jenis Aksi</option>
+            <option value="Upload">Unggah Berkas</option>
             <option value="Tanda Tangan">Tanda Tangan</option>
             <option value="Verifikasi">Verifikasi</option>
-            <option value="Selesai">Selesai</option>
+            <option value="Selesai">Penyelesaian</option>
           </select>
         </div>
       </div>
 
       {/* Timeline Layout */}
       {loading ? (
-        <div className="flex justify-center items-center py-12">
-          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">sync</span>
-          <span className="ml-2 text-on-surface-variant font-medium">Memuat riwayat aktivitas...</span>
+        <div className="flex justify-center items-center py-20">
+          <div className="w-9 h-9 border-3 border-[#6366F1] border-t-transparent rounded-full animate-spin"></div>
+          <span className="ml-3 text-slate-500 font-bold text-sm">Memuat riwayat aktivitas...</span>
         </div>
       ) : filteredMyLogs.length === 0 ? (
-        <div className="text-center py-12 bg-surface-container-lowest border border-outline-variant rounded-xl p-8 card-shadow">
-          <span className="material-symbols-outlined text-[48px] text-on-surface-variant mb-2">history</span>
-          <p className="text-on-surface-variant font-bold">Tidak ada aktivitas ditemukan.</p>
+        <div className="text-center py-16 soft-card p-8">
+          <div className="w-16 h-16 bg-[#EEF2FF] rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Activity className="w-8 h-8 text-[#6366F1]" />
+          </div>
+          <h3 className="font-extrabold text-slate-700 text-base">Tidak Ada Aktivitas Ditemukan</h3>
+          <p className="text-slate-400 text-xs mt-1">Coba sesuaikan kata kunci pencarian atau filter tanggal Anda.</p>
         </div>
       ) : (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
-          <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-outline-variant">
+        <div className="soft-card p-6">
+          <div className="relative pl-6 space-y-5 before:content-[''] before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
             {filteredMyLogs.map((act) => (
-              <div key={act.id} className="relative">
-                <div className="absolute -left-[22px] top-1.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white"></div>
-                <div className="flex justify-between items-start">
+              <div key={act.id} className="relative group">
+                <div className="absolute -left-[20px] top-2 w-3.5 h-3.5 bg-[#6366F1] rounded-full border-2 border-white shadow-xs"></div>
+                <div className="bg-[#F8FAFC] border border-slate-100 hover:border-[#6366F1]/30 p-4 rounded-2xl flex justify-between items-center transition-all hover:bg-white hover:shadow-sm">
                   <div>
-                    <p className="text-body-md text-on-surface font-bold text-[13px] flex items-center gap-2">
-                      Anda
-                      <span className="font-normal text-on-surface-variant">{act.action}</span>
-                    </p>
-                    <p className="text-[11px] text-primary font-semibold mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-800 text-[13.5px]">Anda</span>
+                      <span className="text-[13px] text-slate-600 font-medium">{act.action}</span>
+                    </div>
+                    <p className="text-[12px] text-[#6366F1] font-bold mt-1">
                       {act.target}
                     </p>
-                    <p className="text-[10px] text-on-surface-variant mt-1">
+                    <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-medium">
+                      <Clock className="w-3 h-3" />
                       {act.timestamp}
                     </p>
                   </div>
                   
-                  <div className="p-1.5 bg-surface-container-high rounded text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[16px]">{act.icon}</span>
+                  <div className="p-2.5 bg-white rounded-xl shadow-xs border border-slate-100">
+                    {getActionIcon(act.type)}
                   </div>
                 </div>
               </div>

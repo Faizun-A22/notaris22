@@ -40,41 +40,56 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // Cek session yang sudah ada saat app pertama kali load
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const prof = await fetchProfile(session.user.id);
-        if (prof) {
+    let mounted = true;
+
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && mounted) {
           setUser(session.user);
-          setProfile(prof);
-        } else {
-          clearStorageData();
+          const prof = await fetchProfile(session.user.id);
+          if (prof && mounted) {
+            setProfile(prof);
+          } else if (mounted) {
+            // Fallback profile if profile record missing or fetch error
+            setProfile({
+              id: session.user.id,
+              email: session.user.email,
+              role: session.user.user_metadata?.role || 'staff',
+              full_name: session.user.user_metadata?.full_name || 'User',
+            });
+          }
+        } else if (mounted) {
           setUser(null);
           setProfile(null);
         }
-      } else {
-        clearStorageData();
-        setUser(null);
-        setProfile(null);
+      } catch (err) {
+        console.error('[AuthContext] getSession error:', err);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    // Dengarkan perubahan auth state (login, logout, token refresh)
+    initAuth();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
+
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
         if (session?.user) {
+          setUser(session.user);
           const prof = await fetchProfile(session.user.id);
-          if (prof) {
-            setUser(session.user);
+          if (prof && mounted) {
             setProfile(prof);
-          } else {
-            clearStorageData();
-            setUser(null);
-            setProfile(null);
           }
         } else {
-          clearStorageData();
           setUser(null);
           setProfile(null);
         }
@@ -82,13 +97,48 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const resolveEmailFromIdentifier = async (identifier) => {
+    if (!identifier) return '';
+    const clean = identifier.trim();
+    if (clean.includes('@')) {
+      return clean;
+    }
+
+    // Sanitize phone number: keep only leading '+' and digits
+    const sanitizedPhone = clean.replace(/[^\d+]/g, '');
+    if (!sanitizedPhone || sanitizedPhone.length < 6) {
+      return clean;
+    }
+
+    try {
+      const pureDigits = sanitizedPhone.replace(/^\+/, '');
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('email')
+        .or(`phone.eq.${pureDigits},phone.eq.+${pureDigits}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (prof?.email) {
+        return prof.email;
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Phone lookup error:', err);
+    }
+    return clean;
+  };
 
   /**
    * Login untuk Owner — hanya role 'owner' yang diperbolehkan masuk
    */
-  const loginAsOwner = async (email, password) => {
+  const loginAsOwner = async (identifier, password) => {
+    const email = await resolveEmailFromIdentifier(identifier);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -97,7 +147,7 @@ export const AuthProvider = ({ children }) => {
       if (error.message?.includes('Email not confirmed')) {
         return { success: false, message: 'Email belum dikonfirmasi. Cek kotak masuk email Anda atau hubungi admin.' };
       }
-      return { success: false, message: 'Email atau password salah.' };
+      return { success: false, message: 'Email / Nomor Telepon atau password salah.' };
     }
 
     // Verifikasi role harus 'owner'
@@ -130,7 +180,8 @@ export const AuthProvider = ({ children }) => {
   /**
    * Login untuk Staff — hanya role 'staff' yang diperbolehkan masuk
    */
-  const loginAsStaff = async (email, password) => {
+  const loginAsStaff = async (identifier, password) => {
+    const email = await resolveEmailFromIdentifier(identifier);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -138,7 +189,7 @@ export const AuthProvider = ({ children }) => {
       if (error.message?.includes('Email not confirmed')) {
         return { success: false, message: 'Email belum dikonfirmasi. Cek kotak masuk email Anda atau hubungi admin.' };
       }
-      return { success: false, message: 'Email atau password salah.' };
+      return { success: false, message: 'Email / Nomor Telepon atau password salah.' };
     }
 
     // Verifikasi role harus 'staff'

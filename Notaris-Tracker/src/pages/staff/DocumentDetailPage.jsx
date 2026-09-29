@@ -3,8 +3,63 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { useCases } from '../../hooks/useCases';
+import { useAuth } from '../../hooks/useAuth';
 import { formatDate } from '../../utils/formatDate';
-import { uploadDocumentFile } from '../../lib/storage';
+import { uploadDocumentFile, getSignedDocumentUrl } from '../../lib/storage';
+import { getStagesForCase } from '../../utils/getStagesForCase';
+import { LocationSearchInput } from '../../components/common/LocationSearchInput';
+
+const DocThumbnail = ({ fileUrl, fileName, onClick }) => {
+  const [resolvedUrl, setResolvedUrl] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!fileUrl) {
+      setResolvedUrl('');
+      return;
+    }
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://') || fileUrl.startsWith('data:') || fileUrl.startsWith('blob:')) {
+      setResolvedUrl(fileUrl);
+    } else {
+      getSignedDocumentUrl(fileUrl, 3600).then((url) => {
+        if (isMounted) setResolvedUrl(url || fileUrl);
+      });
+    }
+    return () => { isMounted = false; };
+  }, [fileUrl]);
+
+  const cleanUrl = (fileUrl || '').split('?')[0].toLowerCase();
+  const cleanName = (fileName || '').toLowerCase();
+  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic'];
+  const isImg = imageExtensions.some(ext => cleanUrl.endsWith('.' + ext) || cleanName.endsWith('.' + ext)) || fileUrl?.startsWith('data:image/') || fileUrl?.startsWith('blob:');
+
+  if (isImg && resolvedUrl) {
+    return (
+      <div 
+        onClick={onClick}
+        className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shrink-0 cursor-pointer hover:opacity-90 hover:scale-105 transition-all shadow-xs group relative"
+        title="Klik untuk memperbesar gambar (Pratinjau Layar Penuh)"
+      >
+        <img src={resolvedUrl} alt={fileName || 'Thumbnail'} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+          <span className="material-symbols-outlined text-[20px]">fullscreen</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      onClick={onClick}
+      className="w-12 h-12 rounded-xl border border-slate-200 bg-slate-50 shrink-0 flex items-center justify-center text-slate-500 cursor-pointer hover:bg-slate-100 transition-all shadow-xs"
+      title="Klik untuk pratinjau dokumen"
+    >
+      <span className="material-symbols-outlined text-[24px]">
+        {fileName?.toLowerCase().endsWith('.pdf') || fileUrl?.toLowerCase().includes('.pdf') ? 'picture_as_pdf' : 'description'}
+      </span>
+    </div>
+  );
+};
 
 const formatNumberWithDots = (num) => {
   if (num === undefined || num === null || num === '') return '';
@@ -49,7 +104,7 @@ const parseDotsToNumber = (str) => {
   return Math.round(parsed * multiplier);
 };
 
-const CurrencyInput = ({ id, value, onChange, className, placeholder, required = false }) => {
+const CurrencyInput = ({ id, value, onChange, className, placeholder, required = false, disabled = false }) => {
   const [tempValue, setTempValue] = useState(formatNumberWithDots(value));
 
   useEffect(() => {
@@ -57,6 +112,7 @@ const CurrencyInput = ({ id, value, onChange, className, placeholder, required =
   }, [value]);
 
   const handleChange = (e) => {
+    if (disabled) return;
     const rawVal = e.target.value.replace(/\D/g, '');
     if (!rawVal) {
       setTempValue('');
@@ -73,6 +129,7 @@ const CurrencyInput = ({ id, value, onChange, className, placeholder, required =
       id={id}
       type="text"
       required={required}
+      disabled={disabled}
       value={tempValue}
       onChange={handleChange}
       className={className}
@@ -105,16 +162,8 @@ export const DocumentDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { cases, updateCase, updateCaseStatus, updateCaseStage } = useCases();
-
-  const isImageFile = (url, name) => {
-    if (!url) return false;
-    if (url.startsWith('blob:')) {
-      const ext = name?.toLowerCase().split('.').pop();
-      return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-    }
-    const ext = url.toLowerCase().split('.').pop();
-    return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-  };
+  const { profile } = useAuth();
+  const isOwner = profile?.role === 'owner';
 
   // Find the current case
   const activeCase = cases.find((c) => c.id === id);
@@ -125,15 +174,11 @@ export const DocumentDetailPage = () => {
   const [uploadFile, setUploadFile] = useState(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [selectedDocForReview, setSelectedDocForReview] = useState(null);
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  useEffect(() => {
-    if (!selectedDocForUpload) {
-      setUploadFile(null);
-    }
-  }, [selectedDocForUpload]);
-  
+  // Zoom & Rotation state for document preview
+  const [zoomScale, setZoomScale] = useState(1);
+  const [rotationAngle, setRotationAngle] = useState(0);
+
   // Share link states
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -143,7 +188,7 @@ export const DocumentDetailPage = () => {
   const [isEditingRemarks, setIsEditingRemarks] = useState(false);
   const [remarksText, setRemarksText] = useState('');
 
-  // Update remarks when activeCase loads
+  // Edit details state
   const [showEditDetailsModal, setShowEditDetailsModal] = useState(false);
   const [editNotes, setEditNotes] = useState('');
   const [editFees, setEditFees] = useState('');
@@ -152,6 +197,161 @@ export const DocumentDetailPage = () => {
   const [editEstimationDate, setEditEstimationDate] = useState('');
   const [editPaymentStatus, setEditPaymentStatus] = useState('Belum Lunas');
   const [editPaidAmount, setEditPaidAmount] = useState(0);
+
+  // Payment installment modal states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [newPaymentAmount, setNewPaymentAmount] = useState(0);
+  const [newPaymentNote, setNewPaymentNote] = useState('');
+  const [newPaymentDate, setNewPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Handle record payment installment
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    const amountNum = Number(newPaymentAmount) || 0;
+    if (amountNum <= 0) {
+      toast.error('Harap masukkan nominal pembayaran yang valid (lebih dari 0).');
+      return;
+    }
+
+    try {
+      const currentHistory = activeCase.paymentHistory || [];
+      const newEntry = {
+        id: `PAY-${Date.now()}`,
+        amount: amountNum,
+        note: newPaymentNote.trim() || `Cicilan ke-${currentHistory.length + 1}`,
+        date: newPaymentDate || new Date().toISOString().split('T')[0],
+        recordedBy: profile?.full_name || 'Staf',
+        createdAt: new Date().toISOString(),
+      };
+
+      const updatedHistory = [newEntry, ...currentHistory];
+      const newTotalPaid = updatedHistory.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const totalFees = Number(activeCase.fees || 0);
+
+      let newStatus = 'Belum Lunas';
+      if (totalFees > 0 && newTotalPaid >= totalFees) {
+        newStatus = 'Lunas';
+      } else if (newTotalPaid > 0) {
+        newStatus = 'DP / Cicilan';
+      }
+
+      await updateCase(activeCase.id, {
+        paymentHistory: updatedHistory,
+        paidAmount: newTotalPaid,
+        paymentStatus: newStatus,
+      });
+
+      setNewPaymentAmount(0);
+      setNewPaymentNote('');
+      setNewPaymentDate(new Date().toISOString().split('T')[0]);
+      toast.success(`Pembayaran cicilan Rp ${amountNum.toLocaleString('id-ID')} berhasil dicatat!`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal mencatat pembayaran cicilan.');
+    }
+  };
+
+  // Handle remove payment entry
+  const handleRemovePaymentEntry = async (entryId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus catatan pembayaran cicilan ini?')) return;
+    try {
+      const currentHistory = activeCase.paymentHistory || [];
+      const updatedHistory = currentHistory.filter(item => item.id !== entryId);
+      const newTotalPaid = updatedHistory.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const totalFees = Number(activeCase.fees || 0);
+
+      let newStatus = 'Belum Lunas';
+      if (totalFees > 0 && newTotalPaid >= totalFees) {
+        newStatus = 'Lunas';
+      } else if (newTotalPaid > 0) {
+        newStatus = 'DP / Cicilan';
+      }
+
+      await updateCase(activeCase.id, {
+        paymentHistory: updatedHistory,
+        paidAmount: newTotalPaid,
+        paymentStatus: newStatus,
+      });
+
+      toast.success('Catatan pembayaran cicilan berhasil dihapus.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal menghapus catatan pembayaran.');
+    }
+  };
+
+  // Helper function for checking image file
+  const isImageFile = (url, name) => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].toLowerCase();
+    const cleanName = (name || '').toLowerCase();
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+    
+    const urlExt = cleanUrl.split('.').pop();
+    const nameExt = cleanName.split('.').pop();
+    
+    if (imageExtensions.includes(urlExt) || imageExtensions.includes(nameExt)) return true;
+    if (url.startsWith('data:image/') || url.startsWith('blob:')) return true;
+    return false;
+  };
+
+  // States for modal resolved URLs
+  const [previewResolvedUrl, setPreviewResolvedUrl] = useState('');
+  const [reviewResolvedUrl, setReviewResolvedUrl] = useState('');
+
+  // Resolve preview document URL dynamically
+  useEffect(() => {
+    let mounted = true;
+    const resolvePreviewUrl = async () => {
+      if (!selectedDocForPreview?.fileUrl) {
+        setPreviewResolvedUrl('');
+        return;
+      }
+      const rawUrl = selectedDocForPreview.fileUrl;
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) {
+        setPreviewResolvedUrl(rawUrl);
+      } else {
+        const signed = await getSignedDocumentUrl(rawUrl, 3600);
+        if (mounted) setPreviewResolvedUrl(signed || rawUrl);
+      }
+    };
+
+    resolvePreviewUrl();
+    return () => { mounted = false; };
+  }, [selectedDocForPreview]);
+
+  // Resolve review document URL dynamically
+  useEffect(() => {
+    let mounted = true;
+    const resolveReviewUrl = async () => {
+      if (!selectedDocForReview?.fileUrl) {
+        setReviewResolvedUrl('');
+        return;
+      }
+      const rawUrl = selectedDocForReview.fileUrl;
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) {
+        setReviewResolvedUrl(rawUrl);
+      } else {
+        const signed = await getSignedDocumentUrl(rawUrl, 3600);
+        if (mounted) setReviewResolvedUrl(signed || rawUrl);
+      }
+    };
+
+    resolveReviewUrl();
+    return () => { mounted = false; };
+  }, [selectedDocForReview]);
+
+  // Reset zoom & rotation when preview target changes
+  useEffect(() => {
+    setZoomScale(1);
+    setRotationAngle(0);
+  }, [selectedDocForPreview]);
+
+  useEffect(() => {
+    if (!selectedDocForUpload) {
+      setUploadFile(null);
+    }
+  }, [selectedDocForUpload]);
 
   useEffect(() => {
     if (activeCase) {
@@ -166,6 +366,28 @@ export const DocumentDetailPage = () => {
     }
   }, [activeCase]);
 
+  // Download document handler
+  const handleDownloadDocument = async (fileUrl, fileName) => {
+    try {
+      toast.loading('Mengunduh berkas...', { id: 'download-file-toast' });
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName || 'dokumen';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Berkas berhasil diunduh!', { id: 'download-file-toast' });
+    } catch (err) {
+      console.error(err);
+      window.open(fileUrl, '_blank');
+      toast.dismiss('download-file-toast');
+    }
+  };
+
   const handlePublishDraft = async () => {
     try {
       await updateCase(activeCase.id, { isDraft: false });
@@ -178,19 +400,25 @@ export const DocumentDetailPage = () => {
 
   const handleSaveDetails = async () => {
     try {
-      await updateCase(activeCase.id, {
+      const payload = {
         notes: editNotes,
-        fees: Number(editFees) || 0,
         propertyLocation: editLocation,
         bankPartner: editBank,
         estimationDate: editEstimationDate,
-        paymentStatus: editPaymentStatus,
-        paidAmount: Number(editPaidAmount) || 0
-      });
+      };
+
+      if (isOwner) {
+        payload.fees = Number(editFees) || 0;
+        payload.paymentStatus = editPaymentStatus;
+        payload.paidAmount = Number(editPaidAmount) || 0;
+      }
+
+      await updateCase(activeCase.id, payload);
       setShowEditDetailsModal(false);
       toast.success('Detail berkas berhasil diperbarui!');
     } catch (err) {
-      toast.error('Gagal memperbarui detail berkas!');
+      console.error(err);
+      toast.error('Gagal memperbarui detail berkas: ' + (err.message || ''));
     }
   };
 
@@ -533,331 +761,10 @@ export const DocumentDetailPage = () => {
   const totalCount = checklist.length;
 
   // Retrieve timeline stages dynamically based on serviceType
-  const getStagesForCase = () => {
-    const isPPAT = activeCase.category?.toLowerCase() === 'ppat' || ['AJB', 'HIBAH', 'APHB', 'APHT', 'WARIS', 'ROYA', 'PECAH', 'GANTI', 'KONVERSI', 'SKMHT', 'HT', 'HGB', 'HAK_PAKAI'].includes(activeCase.serviceType);
+  const stages = getStagesForCase(activeCase);
 
-    if (activeCase.serviceType === 'APHT') {
-      return [
-        { id: 1, label: '1. Pengecekan kelengkapan Berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Pengecekan sertifikat', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pengetikan akta', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Tanda tangan akta', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. Penomoran akta', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 6, label: '6. Pendaftaran akta pada aplikasi mitra kerja atr bpn dan spa', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Backup pada aplikasi bank', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Verifikasi berkas oleh bpn melalui aplikasi mutra kerja atr bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Berkas dikembalikan atau telah diverifikasi oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Verifikasi oleh bpn pada aplikasi bank', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Penerbitan sht', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Penyerahan berkas kepada pihak bank', statusKey: 'Selesai', date: '' }
-      ];
-    }
 
-    if (activeCase.serviceType === 'AJB' || activeCase.serviceType === 'HIBAH' || activeCase.serviceType === 'APHB' || isPPAT) {
-      // Check if it matches other specific PPAT services first
-      if (activeCase.serviceType === 'WARIS' || activeCase.serviceType === 'ROYA') {
-        return [
-          { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-          { id: 2, label: '2. Proses validasi sertifikat', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-          { id: 3, label: '3. Proses pengecekan sertifikat', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-          { id: 4, label: '4. Pembayaran pajak peralihan', statusKey: 'Validasi Pajak', date: '' },
-          { id: 5, label: '5. Validasi pajak peralihan', statusKey: 'Validasi Pajak', date: '' },
-          { id: 6, label: '6. Pendaftaran pada atr bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 7, label: '7. Pemeriksaaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 8, label: '8. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-          { id: 9, label: '9. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 10, label: '10. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-          { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-          { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-        ];
-      }
-      if (activeCase.serviceType === 'PECAH') {
-        return [
-          { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-          { id: 2, label: '2. Pengecekan ke bpn status tanah yang kan dipecah', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-          { id: 3, label: '3. Pendaftaran ukur pemechan', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-          { id: 4, label: '4. Pengajuan tapak kapling', statusKey: 'Penyusunan Draf', date: '' },
-          { id: 5, label: '5. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 6, label: '6. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 7, label: '7. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-          { id: 8, label: '8. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-          { id: 9, label: '9. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-          { id: 10, label: '10. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-          { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-        ];
-      }
-      if (activeCase.serviceType === 'GANTI') {
-        return [
-          { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-          { id: 2, label: '2. Pengecekan ke bpn status tanah yang akan diproses', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-          { id: 3, label: '3. Pendaftaran ukur', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-          { id: 4, label: '4. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 5, label: '5. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 6, label: '6. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-          { id: 7, label: '7. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-          { id: 8, label: '8. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-          { id: 9, label: '9. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 10, label: '10. Pemriksaaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 11, label: '11. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 12, label: '12. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 13, label: '13. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-          { id: 14, label: '14. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-        ];
-      }
-      if (activeCase.serviceType === 'KONVERSI') {
-        return [
-          { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-          { id: 2, label: '2. Pengecekan ke bpn status tanah yang akan diproses', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-          { id: 3, label: '3. Pendaftaran ukur', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-          { id: 4, label: '4. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 5, label: '5. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 6, label: '6. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-          { id: 7, label: '7. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-          { id: 8, label: '8. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-          { id: 9, label: '9. Panitia lapang oleh petugas bpn', statusKey: 'Proses BPN', date: '' },
-          { id: 10, label: '10. pengumuman', statusKey: 'Proses BPN', date: '' },
-          { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-          { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-          { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-        ];
-      }
 
-      // Default PPAT stages (AJB/HIBAH/APHB/SKMHT/HT/HGB/HAK_PAKAI)
-      return [
-        { id: 1, label: '1. Pengecekan Berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Validasi Sertifikat', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pengecekan Sertifikat', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Pengetikan Akta', statusKey: 'Penyusunan Draf', date: '' },
-        { id: 5, label: '5. Tanda Tangan Akta', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 6, label: '6. Pembayaran Pajak Peralihan', statusKey: 'Validasi Pajak', date: '' },
-        { id: 7, label: '7. Validasi Pajak Peralihan (PPH Final)', statusKey: 'Validasi Pajak', date: '' },
-        { id: 8, label: '8. Penomoran Akta', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Pendaftaran Akta', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Masuk Berkas Fisik ke BPN', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Pemeriksaan Berkas oleh BPN', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Pencarian Buku Tanah', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Pembayaran SPS', statusKey: 'Proses BPN', date: '' },
-        { id: 14, label: '14. Pemeriksaan Draft Sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 15, label: '15. Draft Sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 16, label: '16. Penerbitan Sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 17, label: '17. Loket Penyerahan Produk', statusKey: 'Proses BPN', date: '' },
-        { id: 18, label: '18. Penyerahan kepada Pemohon', statusKey: 'Selesai', date: '' },
-      ];
-    }
-
-    if (activeCase.serviceType === 'APHT') {
-      return [
-        { id: 1, label: '1. Pengecekan kelengkapan Berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Pengecekan sertifikat', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pengetikan akta', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Tanda tangan akta', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. Penomoran akta', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 6, label: '6. Pendaftaran akta pada aplikasi mitra kerja atr bpn dan spa', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Backup pada aplikasi bank', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Verifikasi berkas oleh bpn melalui aplikasi mutra kerja atr bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Berkas dikembalikan atau telah diverifikasi oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Verifikasi oleh bpn pada aplikasi bank', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Penerbitan sht', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Penyerahan berkas kepada pihak bank', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'WARIS' || activeCase.serviceType === 'ROYA') {
-      return [
-        { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Proses validasi sertifikat', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Proses pengecekan sertifikat', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Pembayaran pajak peralihan', statusKey: 'Validasi Pajak', date: '' },
-        { id: 5, label: '5. Validasi pajak peralihan', statusKey: 'Validasi Pajak', date: '' },
-        { id: 6, label: '6. Pendaftaran pada atr bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Pemeriksaaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-        { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'PECAH') {
-      return [
-        { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Pengecekan ke bpn status tanah yang kan dipecah', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pendaftaran ukur pemechan', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Pengajuan tapak kapling', statusKey: 'Penyusunan Draf', date: '' },
-        { id: 5, label: '5. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 6, label: '6. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-        { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'GANTI') {
-      return [
-        { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Pengecekan ke bpn status tanah yang akan diproses', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pendaftaran ukur', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 5, label: '5. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 6, label: '6. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Cari buku tanah di warkah bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. Pemriksaaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-        { id: 14, label: '14. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'KONVERSI') {
-      return [
-        { id: 1, label: '1. Pengecekan berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. Pengecekan ke bpn status tanah yang akan diproses', statusKey: 'Verifikasi Sertifikat', date: '14 Oct' },
-        { id: 3, label: '3. Pendaftaran ukur', statusKey: 'Verifikasi Sertifikat', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. Masuk berkas fisik ke bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 5, label: '5. Pemeriksaan berkas oleh bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 6, label: '6. Berkas dikembalikan atau telah sesuai', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. Pembayaran sps', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. Ruang pengukuran untuk gambar, pemetaan, cetak su', statusKey: 'Proses BPN', date: '' },
-        { id: 9, label: '9. Panitia lapang oleh petugas bpn', statusKey: 'Proses BPN', date: '' },
-        { id: 10, label: '10. pengumuman', statusKey: 'Proses BPN', date: '' },
-        { id: 11, label: '11. Pemeriksaan draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 12, label: '12. Draft sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 13, label: '13. Penerbitan sertifikat', statusKey: 'Proses BPN', date: '' },
-        { id: 14, label: '14. Loket penyerahan produk', statusKey: 'Proses BPN', date: '' },
-        { id: 15, label: '15. Penyerahan kepada pemohon', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'FIDUSIA') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: '15 Oct' },
-        { id: 3, label: '3. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. PENOMORAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENDAFTARAN KE KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 6, label: '6. PENERBITAN SK KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. PENYERAHAN AKTA KE PIHAK BANK', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'APJB' || activeCase.serviceType === 'SKUM') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. PENGECEKKAN SERTIFIKAT', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PEMBAYARAN PAJAK PERALIHAN', statusKey: 'Validasi Pajak', date: '' },
-        { id: 6, label: '6. PENOMORAN AKTA', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. PENYERAHAN AKTA KE PEMOHON', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'SEWA' || activeCase.serviceType === 'CONSEN') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: '15 Oct' },
-        { id: 3, label: '3. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. PENOMORAN AKTA', statusKey: 'Proses BPN', date: '' },
-        { id: 5, label: '5. PENYERAHAN AKTA KE PEMOHON', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'APPJB') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. PENGECEKKAN SERTIFIKAT', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENOMORAN AKTA', statusKey: 'Proses BPN', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'APK') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. PENGECEKKAN SERTIFIKAT', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENOMORAN AKTA', statusKey: 'Proses BPN', date: '' },
-        { id: 6, label: '6. PENYERAHAN AKTA KE PIHAK BANK', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'YAYASAN') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. DAFTAR NAMA YAYASAN PADA AHU', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENOMORAN AKTA', statusKey: 'Validasi Pajak', date: '' },
-        { id: 6, label: '6. PENDAFTARAN KE KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. PENERBITAN SK KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. PENYERAHAN AKTA KE PEMOHON', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'PT') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. DAFTAR NAMA PT PADA AHU', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENOMORAN AKTA', statusKey: 'Validasi Pajak', date: '' },
-        { id: 6, label: '6. PENDAFTARAN KE KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. PENERBITAN SK KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. PENYERAHAN AKTA KE PEMOHON', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    if (activeCase.serviceType === 'CV') {
-      return [
-        { id: 1, label: '1. PENGECEKKAN KELENGKAPAN BERKAS', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-        { id: 2, label: '2. DAFTAR NAMA CV PADA AHU', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-        { id: 3, label: '3. PENGETIKKAN AKTA', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-        { id: 4, label: '4. TANDA TANGAN AKTA', statusKey: 'Tanda Tangan Akta', date: '' },
-        { id: 5, label: '5. PENOMORAN AKTA', statusKey: 'Validasi Pajak', date: '' },
-        { id: 6, label: '6. PENDAFTARAN KE KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 7, label: '7. PENERBITAN SKT KEMENKUMHAM', statusKey: 'Proses BPN', date: '' },
-        { id: 8, label: '8. PENYERAHAN AKTA KE PEMOHON', statusKey: 'Selesai', date: '' }
-      ];
-    }
-
-    // 6 Stages for SKMHT and other services
-    return [
-      { id: 1, label: '1. Pengecekkan Berkas', statusKey: 'Pemeriksaan Dokumen', date: '12 Oct' },
-      { id: 2, label: '2. Pengecekkan Sertifikat', statusKey: 'Verifikasi Sertifikat', date: '15 Oct' },
-      { id: 3, label: '3. Pengetikkan Akta', statusKey: 'Penyusunan Draf', date: 'Sedang Berlangsung' },
-      { id: 4, label: '4. Tanda Tangan Akta', statusKey: 'Tanda Tangan Akta', date: '' },
-      { id: 5, label: '5. Penomoran Akta', statusKey: 'Proses BPN', date: '' },
-      { id: 6, label: '6. Penyelesaian Berkas', statusKey: 'Selesai', date: '' },
-    ];
-  };
-
-  const stages = getStagesForCase();
 
   // Get active stage ID with fallback to match status
   const getActiveStageId = () => {
@@ -1038,15 +945,44 @@ export const DocumentDetailPage = () => {
     }
   };
 
-  const handleAdvanceStage = () => {
+  const checkIsPaymentLunas = () => {
+    if (!activeCase) return false;
+    const fees = Number(activeCase.fees || 0);
+    const paid = Number(activeCase.paidAmount || 0);
+    const status = activeCase.paymentStatus;
+    if (status === 'Lunas') return true;
+    if (fees > 0 && paid >= fees) return true;
+    if (fees === 0 && paid >= 0) return true;
+    return false;
+  };
+
+  const handleAdvanceStage = async () => {
     const activeStageId = getActiveStageId();
     const nextStage = stages.find((s) => s.id === activeStageId + 1);
     if (nextStage) {
-      updateCaseStage(activeCase.id, nextStage.id, nextStage.statusKey);
-      toast.success(`Berhasil melanjutkan ke tahap: ${nextStage.label}`);
+      if (nextStage.statusKey === 'Selesai' && !checkIsPaymentLunas()) {
+        toast.error('Gagal menyelesaikan berkas: Pembayaran belum LUNAS! Silakan lunasi cicilan pembayaran terlebih dahulu.', { duration: 5000 });
+        setShowPaymentModal(true);
+        return;
+      }
+      try {
+        await updateCaseStage(activeCase.id, nextStage.id, nextStage.statusKey);
+        toast.success(`Berhasil melanjutkan ke tahap: ${nextStage.label}`);
+      } catch (err) {
+        toast.error(err.message || 'Gagal memperbarui tahapan berkas.');
+      }
     } else {
-      updateCaseStatus(activeCase.id, 'Selesai');
-      toast.success('Semua tahapan selesai! Berkas berhasil diselesaikan.');
+      if (!checkIsPaymentLunas()) {
+        toast.error('Gagal menyelesaikan berkas: Pembayaran belum LUNAS! Silakan lunasi cicilan pembayaran terlebih dahulu.', { duration: 5000 });
+        setShowPaymentModal(true);
+        return;
+      }
+      try {
+        await updateCaseStatus(activeCase.id, 'Selesai');
+        toast.success('Semua tahapan selesai! Berkas berhasil diselesaikan.');
+      } catch (err) {
+        toast.error(err.message || 'Gagal menyelesaikan berkas.');
+      }
     }
   };
 
@@ -1055,14 +991,7 @@ export const DocumentDetailPage = () => {
     setIsEditingRemarks(false);
   };
 
-  const handleSubmitCase = () => {
-    updateCaseStatus(activeCase.id, 'Selesai');
-    setSubmitSuccess(true);
-    setTimeout(() => {
-      setSubmitSuccess(false);
-      setShowSubmitModal(false);
-    }, 2000);
-  };
+
 
   const handlePrint = () => {
     window.print();
@@ -1178,21 +1107,43 @@ export const DocumentDetailPage = () => {
             Kelengkapan & Pelacakan Berkas: {activeCase.serviceType}
           </h2>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2.5 items-center">
           <button
             onClick={handlePrint}
-            className="px-4 py-2 border border-outline-variant rounded-lg text-label-bold font-label-bold text-on-surface hover:bg-surface-container-low transition-colors flex items-center gap-2 shadow-sm bg-white"
+            className="px-4 py-2.5 border border-slate-200 rounded-2xl font-bold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-xs bg-white text-[12.5px] cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">print</span>
-            Print Summary
+            Cetak Ringkasan
           </button>
-          <button
-            onClick={() => setShowSubmitModal(true)}
-            className="px-4 py-2 bg-primary text-on-primary rounded-lg text-label-bold font-label-bold hover:opacity-90 transition-all shadow-md flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[18px]">check_circle</span>
-            Selesaikan Berkas
-          </button>
+
+          {activeCase.status !== 'Selesai' ? (
+            <button
+              onClick={async () => {
+                if (!checkIsPaymentLunas()) {
+                  toast.error('Gagal menyelesaikan berkas: Pembayaran belum LUNAS! Silakan lunasi cicilan pembayaran terlebih dahulu.', { duration: 5000 });
+                  setShowPaymentModal(true);
+                  return;
+                }
+                if (window.confirm('Tandai berkas ini sebagai Selesai (100%)?')) {
+                  try {
+                    await updateCaseStatus(activeCase.id, 'Selesai');
+                    toast.success('Berkas berhasil diselesaikan!');
+                  } catch (err) {
+                    toast.error(err.message || 'Gagal menyelesaikan berkas.');
+                  }
+                }
+              }}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-[12.5px] transition-all flex items-center gap-1.5 shadow-md cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[18px]">check_circle</span>
+              <span>Selesai</span>
+            </button>
+          ) : (
+            <span className="px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-2xl font-extrabold text-[12.5px] flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[18px]">task_alt</span>
+              <span>Selesai (100%)</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -1214,40 +1165,64 @@ export const DocumentDetailPage = () => {
         </div>
       </div>
 
-      {/* Unified Premium Client Card */}
-      <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-card-padding flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] print:mb-4">
+      {/* DRAF NOTICE BANNER */}
+      {activeCase.isDraft && (
+        <div className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4.5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+              <span className="material-symbols-outlined text-[24px]">draft</span>
+            </div>
+            <div>
+              <h4 className="font-bold text-[14px] text-amber-900">Dokumen Berstatus DRAF</h4>
+              <p className="text-[12px] text-amber-700 font-medium">Berkas ini disimpan sebagai draf dan belum masuk ke antrean kerja resmi staf.</p>
+            </div>
+          </div>
+          <button
+            onClick={handlePublishDraft}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all text-[12.5px] flex items-center justify-center gap-2 shadow-sm shrink-0 cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">publish</span>
+            <span>Terbitkan Berkas Resmi</span>
+          </button>
+        </div>
+      )}
+
+      {/* Unified Soft 3D Client Card */}
+      <section className="bg-white rounded-[26px] border border-slate-200/80 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-[0_10px_30px_rgba(112,144,176,0.06)] print:mb-4">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-secondary-container flex items-center justify-center text-primary">
-            <span className="material-symbols-outlined !text-4xl">person</span>
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-white shadow-xs shrink-0">
+            <span className="material-symbols-outlined text-[28px]">person</span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-headline-md text-headline-md font-bold text-on-surface">
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-[20px] font-black text-slate-800 tracking-tight">
                 {activeCase.clientName}
               </h3>
-              <span className={`px-3 py-0.5 rounded-full text-[10px] font-label-bold uppercase ${
-                activeCase.isDraft ? 'bg-amber-100 text-amber-800' : 'bg-primary-container text-on-primary-container'
+              <span className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase ${
+                activeCase.isDraft 
+                  ? 'bg-amber-100 text-amber-800' 
+                  : 'bg-[#F2F1FD] text-[#6366F1] border border-[#E0DDFB]'
               }`}>
                 {activeCase.isComplete ? 'Selesai' : activeCase.isDraft ? 'Draf' : 'Aktif'}
               </span>
             </div>
-            <p className="text-on-surface-variant flex items-center gap-1.5 text-body-md mt-1 font-medium">
-              <span className="material-symbols-outlined !text-sm">gavel</span>
-              {activeCase.serviceType === 'AJB' ? 'Akta Jual Beli (AJB)' : activeCase.serviceType === 'SKMHT' ? 'Surat Kuasa Membebankan Hak Tanggungan (SKMHT)' : activeCase.serviceType} • #{activeCase.caseNumber} • ID: {activeCase.clientId || 'NOTARY-2023-0892'}
+            <p className="text-slate-400 flex items-center gap-1.5 text-[12.5px] mt-1 font-semibold">
+              <span className="material-symbols-outlined text-[15px]">gavel</span>
+              {activeCase.serviceType === 'AJB' ? 'Akta Jual Beli (AJB)' : activeCase.serviceType === 'SKMHT' ? 'Surat Kuasa Membebankan Hak Tanggungan (SKMHT)' : activeCase.serviceType} &bull; #{activeCase.caseNumber} &bull; ID: {activeCase.clientId || 'NOTARY-2024'}
             </p>
           </div>
         </div>
-        <div className="flex gap-2 print:hidden">
-          <div className="text-right mr-4 hidden md:block select-none">
-            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider mb-1">Kondisi Berkas</p>
+        <div className="flex flex-wrap gap-2.5 print:hidden items-center">
+          <div className="text-right mr-3 hidden md:block select-none">
+            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider mb-1">Kondisi Berkas</p>
             <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase ${
               activeCase.isComplete 
-                ? 'bg-secondary-container text-on-secondary-container' 
+                ? 'bg-[#EDFAF3] text-[#10B981] border border-[#D5F5E4]' 
                 : activeCase.isDraft
-                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                ? 'bg-[#FEF8EB] text-[#D97706] border border-[#FDEECC]'
                 : !activeCase.documentsReady 
-                ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                : 'bg-green-100 text-green-800 border border-green-300'
+                ? 'bg-[#FEF8EB] text-[#D97706] border border-[#FDEECC]' 
+                : 'bg-[#EDFAF3] text-[#10B981] border border-[#D5F5E4]'
             }`}>
               {activeCase.isComplete ? 'Selesai' : activeCase.isDraft ? 'Menunggu Diterbitkan' : !activeCase.documentsReady ? 'Menunggu Klien' : 'Aktif Diproses'}
             </span>
@@ -1255,7 +1230,7 @@ export const DocumentDetailPage = () => {
           {activeCase.isDraft && (
             <button
               onClick={handlePublishDraft}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-label-bold transition-colors text-[13px] font-semibold flex items-center gap-1.5 shadow-md shrink-0"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold transition-all text-[12px] flex items-center gap-1.5 shadow-xs shrink-0"
             >
               <span className="material-symbols-outlined text-[16px]">publish</span>
               <span>Terbitkan Berkas</span>
@@ -1263,21 +1238,28 @@ export const DocumentDetailPage = () => {
           )}
           <button
             onClick={() => setShowShareModal(true)}
-            className="px-4 py-2 border border-primary text-primary rounded-lg font-label-bold hover:bg-primary/5 transition-colors text-[13px] font-semibold bg-white flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2.5 border border-slate-200 text-[#6366F1] bg-indigo-50/50 hover:bg-indigo-50 rounded-2xl font-bold transition-all text-[12px] flex items-center gap-1.5 shadow-xs"
           >
             <span className="material-symbols-outlined text-[16px]">share</span>
             <span>Bagikan Link</span>
           </button>
           <button
+            onClick={() => setShowPaymentModal(true)}
+            className="px-4 py-2.5 border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-2xl font-bold transition-all text-[12px] flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[16px]">payments</span>
+            <span>Kelola Cicilan</span>
+          </button>
+          <button
             onClick={() => setShowEditDetailsModal(true)}
-            className="px-4 py-2 border border-outline-variant rounded-lg text-primary font-label-bold hover:bg-surface-container-low transition-colors text-[13px] font-semibold bg-white flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2.5 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-2xl font-bold transition-all text-[12px] flex items-center gap-1.5 shadow-xs"
           >
             <span className="material-symbols-outlined text-[16px]">edit</span>
-            <span>Ubah Detail & Biaya</span>
+            <span>Ubah Detail</span>
           </button>
           <button
             onClick={() => navigate('/staff/dashboard')}
-            className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-bold hover:opacity-90 transition-opacity text-[13px] font-semibold"
+            className="px-4 py-2.5 btn-primary-3d rounded-2xl font-bold text-[12px]"
           >
             Kembali ke Dasbor
           </button>
@@ -1285,28 +1267,43 @@ export const DocumentDetailPage = () => {
       </section>
 
       {/* Grid Data Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant shadow-[0px_4px_20px_rgba(0,0,0,0.03)] print:mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-white p-6 rounded-[26px] border border-slate-200/80 shadow-[0_10px_30px_rgba(112,144,176,0.06)] print:mb-4">
         {[
           { label: 'Tanggal Registrasi', value: formatDate(activeCase.entryDate), icon: 'calendar_today', color: 'text-primary' },
           { label: 'Estimasi Selesai', value: formatDate(activeCase.estimationDate), icon: 'event_available', color: 'text-error' },
-          { label: 'Biaya Akta', value: `Rp ${(activeCase.fees || 0).toLocaleString('id-ID')}`, icon: 'payments', color: 'text-primary' },
+          { label: 'Biaya Akta', value: `Rp ${(activeCase.fees || 0).toLocaleString('id-ID')}`, icon: 'payments', color: 'text-primary', onClick: () => setShowPaymentModal(true) },
           { 
             label: 'Status Pembayaran', 
             value: `${activeCase.paymentStatus || 'Belum Lunas'} (Dibayar: Rp ${(activeCase.paidAmount || 0).toLocaleString('id-ID')})`, 
             icon: 'credit_card', 
-            color: activeCase.paymentStatus === 'Lunas' ? 'text-secondary' : activeCase.paymentStatus === 'DP' ? 'text-primary' : 'text-error' 
+            color: activeCase.paymentStatus === 'Lunas' ? 'text-secondary' : (activeCase.paymentStatus === 'DP' || activeCase.paymentStatus === 'DP / Cicilan') ? 'text-primary' : 'text-error',
+            onClick: () => setShowPaymentModal(true)
           },
           { label: 'Lokasi Objek', value: activeCase.propertyLocation || 'Jakarta Selatan', icon: 'location_on', color: 'text-primary' },
           { label: 'Bank Rekanan', value: activeCase.bankPartner || 'Bank Mandiri', icon: 'corporate_fare', color: 'text-primary' },
           { label: 'Staf Penanggung Jawab', value: activeCase.assignedStaff || 'Ani Lestari, S.H.', icon: 'engineering', color: 'text-primary' },
           { label: 'Status Kelengkapan', value: `${receivedCount} dari ${totalCount} Dokumen Diterima`, icon: 'checklist', color: 'text-primary' }
         ].map((item, index) => (
-          <div key={index} className="bg-surface-container-low p-4 rounded-xl flex items-start gap-3 text-left">
+          <div 
+            key={index} 
+            onClick={item.onClick}
+            className={`p-4 rounded-xl flex items-start gap-3 text-left transition-all ${
+              item.onClick 
+                ? 'bg-emerald-50/40 hover:bg-emerald-100/60 border border-emerald-200/60 cursor-pointer group shadow-2xs' 
+                : 'bg-surface-container-low border border-transparent'
+            }`}
+            title={item.onClick ? 'Klik untuk mengelola cicilan & pembayaran' : undefined}
+          >
             <div className="w-9 h-9 rounded-lg bg-white border border-outline-variant/60 flex items-center justify-center shrink-0">
               <span className={`material-symbols-outlined text-[18px] ${item.color}`}>{item.icon}</span>
             </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">{item.label}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider flex items-center justify-between">
+                <span>{item.label}</span>
+                {item.onClick && (
+                  <span className="text-[9.5px] text-emerald-700 font-extrabold underline group-hover:text-emerald-900">Kelola</span>
+                )}
+              </p>
               <p className="font-semibold text-on-surface text-[12.5px] mt-0.5 truncate" title={item.value}>{item.value}</p>
             </div>
           </div>
@@ -1381,7 +1378,7 @@ export const DocumentDetailPage = () => {
                 {receivedCount} / {totalCount} TERIMA
               </span>
             </div>
-            <div className="flex flex-col gap-base">
+            <div className="flex flex-col gap-3">
               {checklist.map((item, idx) => {
                 const isReceived = item.status === 'Sudah Diterima';
                 const isPending = item.status === 'Belum Ada';
@@ -1395,113 +1392,151 @@ export const DocumentDetailPage = () => {
                 return (
                   <div
                     key={item.id}
-                    className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors rounded-xl text-body-md gap-3 text-left"
+                    className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 sm:p-4.5 transition-all shadow-xs hover:shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 text-left"
                   >
-                    <div className="flex items-start gap-3 min-w-0">
-                      {isReceived ? (
-                        <div
-                          onClick={() => handleUpdateChecklistStatus(item.id, 'Belum Ada')}
-                          className="w-8 h-8 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary cursor-pointer active:scale-95 transition-transform mt-0.5 shrink-0"
-                          title="Tandai belum diterima"
-                        >
-                          <span className="material-symbols-outlined !text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                            check_circle
-                          </span>
-                        </div>
-                      ) : isReview ? (
-                        <div
-                          onClick={() => setSelectedDocForReview(item)}
-                          className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center text-yellow-700 cursor-pointer active:scale-95 transition-transform mt-0.5 shrink-0"
-                          title="Klik untuk verifikasi"
-                        >
-                          <span className="material-symbols-outlined !text-xl animate-pulse">priority_high</span>
-                        </div>
+                    {/* Left: Thumbnail & Details */}
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                      {item.fileUrl ? (
+                        <DocThumbnail 
+                          fileUrl={item.fileUrl} 
+                          fileName={item.fileName || item.name} 
+                          onClick={() => setSelectedDocForPreview(item)} 
+                        />
                       ) : (
-                        <div
-                          onClick={() => setSelectedDocForUpload(item)}
-                          className="w-8 h-8 rounded-lg bg-error-container/20 flex items-center justify-center text-error cursor-pointer active:scale-95 transition-transform hover:bg-primary/10 hover:text-primary mt-0.5 shrink-0"
-                          title="Tandai diterima/Upload"
-                        >
-                          <span className="material-symbols-outlined !text-xl">pending</span>
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                          isReview 
+                            ? 'bg-amber-100 text-amber-700 border border-amber-200/60' 
+                            : 'bg-slate-100 text-slate-400 border border-slate-200/60'
+                        }`}>
+                          <span className="material-symbols-outlined text-[22px]">
+                            {isReview ? 'priority_high' : 'folder_open'}
+                          </span>
                         </div>
                       )}
-                      
-                      <div className="min-w-0">
-                        <p className="text-on-surface font-semibold text-[13.5px] leading-tight">
-                          {idx + 1}. {item.name}
-                        </p>
-                        <p className="text-[11px] text-on-surface-variant mt-0.5 leading-normal truncate">{item.desc}</p>
-                        
-                        {/* Meta indicators for Checklist Attributes */}
-                        <div className="flex flex-wrap gap-2 items-center mt-2">
-                          <span className={`px-2 py-0.5 text-[9px] font-bold rounded uppercase ${isMandatory ? 'bg-error-container text-on-error-container' : 'bg-surface-container-high text-on-surface-variant'}`}>
+
+                      {/* Title, Subtitle, and Inline Tags */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="font-black text-[14.5px] text-slate-800 tracking-tight leading-snug">
+                            {idx + 1}. {item.name}
+                          </h5>
+                          
+                          {/* Wajib / Opsional Badge */}
+                          <span className={`px-2 py-0.5 text-[9.5px] font-extrabold rounded-md uppercase tracking-wider ${
+                            isMandatory 
+                              ? 'bg-rose-50 text-rose-600 border border-rose-100' 
+                              : 'bg-slate-100 text-slate-500 border border-slate-200/60'
+                          }`}>
                             {isMandatory ? 'Wajib' : 'Opsional'}
                           </span>
-                          
-                          {isReceived && (
-                            <span className="text-[10px] text-on-surface-variant font-medium flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[12px]">verified</span>
-                              Pemeriksa: <strong className="text-primary font-bold">{verifierInitials}</strong> • Tgl: {dateNote}
-                            </span>
-                          )}
-                          
-                          {isReview && (
-                            <span className="text-[10px] text-amber-700 font-medium flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[12px] animate-spin">sync</span>
-                              Status: {dateNote}
-                            </span>
-                          )}
 
-                          {isPending && (
-                            <span className="text-[10px] text-error font-medium flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[12px]">hourglass_empty</span>
-                              Status: {dateNote}
+                          {/* Status Pill Badge */}
+                          {isReceived ? (
+                            <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-full uppercase">
+                              Sudah Diterima
+                            </span>
+                          ) : isReview ? (
+                            <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold rounded-full uppercase">
+                              Perlu Verifikasi
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 bg-rose-50 text-rose-600 border border-rose-200 text-[10px] font-bold rounded-full uppercase">
+                              Belum Diunggah
                             </span>
                           )}
                         </div>
+
+                        <p className="text-[12px] text-slate-500 font-medium mt-1 leading-relaxed">
+                          {item.desc}
+                        </p>
+
+                        {/* Verification / Upload metadata info */}
+                        {isReceived && (
+                          <p className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px] text-emerald-500">verified</span>
+                            <span>Pemeriksa: <strong className="text-slate-700 font-bold">{verifierInitials}</strong> &bull; Tgl: {dateNote}</span>
+                          </p>
+                        )}
+                        {isReview && (
+                          <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px] animate-spin">sync</span>
+                            <span>Dokumen telah diunggah dan sedang dalam peninjauan.</span>
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0 print:hidden ml-11 sm:ml-0">
+                    {/* Right: Icon-Only Action Buttons Row */}
+                    <div className="flex items-center gap-1.5 shrink-0 print:hidden pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 justify-end">
                       {isReceived ? (
                         <>
-                          <span className="px-2.5 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-lg uppercase">
-                            SUDAH DITERIMA
-                          </span>
                           <button
                             onClick={() => setSelectedDocForPreview(item)}
-                            className="text-primary hover:bg-primary/10 p-1.5 rounded-lg transition-colors"
-                            title="Lihat"
+                            className="w-9 h-9 rounded-xl bg-indigo-50 text-[#6366F1] hover:bg-[#6366F1] hover:text-white border border-indigo-100 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Lihat Pratinjau Dokumen"
                           >
                             <span className="material-symbols-outlined text-[18px]">visibility</span>
+                          </button>
+
+                          <button
+                            onClick={() => setSelectedDocForUpload(item)}
+                            className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Ganti / Upload Berkas Baru"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">sync</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Batalkan upload berkas "${item.name}"? Status akan dikembalikan ke Belum Ada.`)) {
+                                handleUpdateChecklistStatus(item.id, 'Belum Ada');
+                              }
+                            }}
+                            className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200/60 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Batalkan Upload / Hapus Lampiran"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
                           </button>
                         </>
                       ) : isReview ? (
                         <>
-                          <span className="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-lg uppercase">
-                            PERLU VERIFIKASI
-                          </span>
                           <button
                             onClick={() => setSelectedDocForReview(item)}
-                            className="text-secondary hover:bg-secondary/10 p-1.5 rounded-lg transition-colors"
-                            title="Tinjau"
+                            className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white border border-amber-200 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Tinjau & Verifikasi Berkas"
                           >
                             <span className="material-symbols-outlined text-[18px]">fact_check</span>
                           </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="px-2.5 py-1 bg-error-container text-on-error-container text-[10px] font-bold rounded-lg uppercase">
-                            BELUM DIUNGGAH
-                          </span>
+
                           <button
                             onClick={() => setSelectedDocForUpload(item)}
-                            className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-[10.5px] font-bold hover:opacity-90 transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                            className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Ganti / Upload Berkas Baru"
                           >
-                            <span className="material-symbols-outlined text-[13px]">upload</span>
-                            Upload
+                            <span className="material-symbols-outlined text-[18px]">sync</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Batalkan upload berkas "${item.name}"? Status akan dikembalikan ke Belum Ada.`)) {
+                                handleUpdateChecklistStatus(item.id, 'Belum Ada');
+                              }
+                            }}
+                            className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200/60 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                            title="Batalkan Upload / Hapus Lampiran"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedDocForUpload(item)}
+                          className="h-9 px-3.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-[12px] font-extrabold transition-all flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer"
+                          title="Upload Berkas"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
+                          <span>Upload</span>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1572,7 +1607,7 @@ export const DocumentDetailPage = () => {
             
             <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
               {((activeCase.logs && activeCase.logs.length > 0) ? activeCase.logs : [
-                { timestamp: new Date(activeCase.id ? Number(activeCase.id) : Date.now()).toISOString(), user: 'Sistem', action: 'Berkas didaftarkan / berkas masuk ke dalam sistem' }
+                { timestamp: activeCase.createdAt || new Date().toISOString(), user: 'Sistem', action: 'Berkas didaftarkan / berkas masuk ke dalam sistem' }
               ]).map((log, idx) => (
                 <div key={idx} className="flex gap-3 text-body-md border-b border-outline-variant/40 pb-3 last:border-0 last:pb-0">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0"></div>
@@ -1667,7 +1702,7 @@ export const DocumentDetailPage = () => {
                       <div className="flex-1 border-b border-outline-variant/60 pb-3">
                         <div className="flex items-center justify-between">
                           <p className={`font-label-bold font-bold text-[13px] ${isPending ? 'text-on-surface-variant/70' : 'text-on-surface'}`}>
-                            {stage.label}
+                            {stage.id}. {stage.label}
                           </p>
                           <span
                             className={`px-2 py-0.5 text-[9px] font-label-bold font-bold rounded uppercase ${
@@ -1719,108 +1754,241 @@ export const DocumentDetailPage = () => {
   function renderModals() {
     return (
       <>
-        {/* === MODAL: PREVIEW DOCUMENT === */}
+        {/* === MODAL: PREVIEW DOCUMENT WITH ZOOM, ROTATE, DOWNLOAD, EDIT === */}
         {selectedDocForPreview && (
-          <div className="fixed inset-0 bg-inverse-surface/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white border border-outline-variant rounded-xl w-full max-w-lg p-6 relative shadow-xl text-left animate-in fade-in zoom-in-95 duration-200">
-              <button
-                onClick={() => setSelectedDocForPreview(null)}
-                className="absolute top-4 right-4 text-on-surface-variant hover:text-on-surface transition-colors"
-              >
-                <span className="material-symbols-outlined text-[24px]">close</span>
-              </button>
-              <h3 className="font-bold text-[16px] text-primary uppercase tracking-wide border-b pb-2 mb-4">
-                Pratinjau: {selectedDocForPreview.name}
-              </h3>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 select-none">
+            <div className="bg-white border border-slate-200 rounded-[28px] w-full max-w-4xl p-5 sm:p-6 relative shadow-[0_20px_60px_rgba(0,0,0,0.2)] text-left animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
               
-              <div className="bg-surface-container-low border border-dashed border-outline-variant rounded-lg p-6 flex flex-col items-center justify-center min-h-[250px] relative overflow-hidden">
-                {selectedDocForPreview.name.includes('KTP') ? (
-                  /* High-fidelity Blue E-KTP Render */
-                  <div className="w-[360px] h-[220px] bg-gradient-to-r from-sky-400 to-sky-600 rounded-xl shadow-lg border border-sky-300 p-4 text-white font-mono text-[9px] relative overflow-hidden select-none">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-bl-full pointer-events-none"></div>
-                    <div className="flex justify-between items-start border-b border-white/30 pb-1 mb-2">
-                      <p className="font-bold">PROVINSI DKI JAKARTA<br/>KOTA JAKARTA SELATAN</p>
-                      <p className="text-[7px] text-right font-sans">REPUBLIK INDONESIA</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[12px] font-bold border-b border-white/20 pb-0.5 mb-1 text-yellow-200">NIK: 3174092408890001</p>
-                      <div className="grid grid-cols-12 gap-x-1">
-                        <span className="col-span-4">Nama</span>
-                        <span className="col-span-8">: BAMBANG WIJAYA</span>
-                      </div>
-                      <div className="grid grid-cols-12 gap-x-1">
-                        <span className="col-span-4">Tempat/Tgl Lahir</span>
-                        <span className="col-span-8">: JAKARTA, 24-08-1989</span>
-                      </div>
-                      <div className="grid grid-cols-12 gap-x-1">
-                        <span className="col-span-4">Alamat</span>
-                        <span className="col-span-8">: JL. KEMANG RAYA NO. 12</span>
-                      </div>
-                      <div className="grid grid-cols-12 gap-x-1">
-                        <span className="col-span-4">Agama</span>
-                        <span className="col-span-8">: ISLAM</span>
-                      </div>
-                      <div className="grid grid-cols-12 gap-x-1">
-                        <span className="col-span-4">Status Perkawinan</span>
-                        <span className="col-span-8">: KAWIN</span>
-                      </div>
-                    </div>
-                    <div className="absolute right-4 bottom-4 w-16 h-20 bg-sky-200 rounded border border-white/50 flex items-center justify-center text-sky-800">
-                      <span className="material-symbols-outlined text-[32px]">person</span>
-                    </div>
-                    <div className="absolute right-24 bottom-4 text-[6px] font-sans text-center">
-                      <p>JAKARTA SELATAN</p>
-                      <p>25-05-2023</p>
-                    </div>
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0 gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-[#6366F1] flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[22px]">visibility</span>
                   </div>
-                ) : selectedDocForPreview.name.includes('Sertifikat') || selectedDocForPreview.name.includes('SERTIFIKAT') ? (
-                  /* High-fidelity Green BPN Certificate Render */
-                  <div className="w-[320px] h-[240px] bg-[#eef7ef] border-4 border-[#417646] rounded-xl shadow-lg p-5 text-[#1b3d20] flex flex-col items-center justify-between relative overflow-hidden select-none">
-                    <div className="absolute inset-0 border-2 border-dashed border-[#417646]/20 m-1 pointer-events-none"></div>
-                    <div className="text-center">
-                      <span className="material-symbols-outlined text-[32px] text-amber-600 mb-1" style={{ fontVariationSettings: "'FILL' 1" }}>gavel</span>
-                      <h4 className="font-serif text-[12px] font-bold tracking-wider">BADAN PERTANAHAN NASIONAL</h4>
-                      <p className="text-[7px] tracking-widest font-sans font-bold">REPUBLIK INDONESIA</p>
-                    </div>
-                    <div className="text-center my-4 space-y-1">
-                      <h5 className="font-serif text-[14px] font-bold border-b border-[#417646]/30 pb-1 px-4">SERTIFIKAT</h5>
-                      <p className="text-[9px] font-bold font-mono">HAK MILIK No. 04892</p>
-                      <p className="text-[8px] font-medium font-sans">DESA/KELURAHAN: KEBAYORAN BARU</p>
-                    </div>
-                    <div className="w-full flex justify-between items-end text-[7px] font-bold">
-                      <p>LUAS: 250 M<sup>2</sup></p>
-                      <div className="text-center font-sans border-t border-[#1b3d20]/30 pt-1 w-20">
-                        <p>KEPALA KANTOR</p>
+                  <div className="min-w-0">
+                    <h3 className="font-extrabold text-[16px] text-slate-800 truncate">
+                      Pratinjau: {selectedDocForPreview.name}
+                    </h3>
+                    {selectedDocForPreview.fileName && (
+                      <p className="text-[11.5px] text-slate-400 font-medium truncate">
+                        File: {selectedDocForPreview.fileName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Action Toolbar */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {selectedDocForPreview.fileUrl && (
+                    <>
+                      {/* Edit / Replace Button */}
+                      <button
+                        onClick={() => {
+                          const targetDoc = selectedDocForPreview;
+                          setSelectedDocForPreview(null);
+                          setSelectedDocForUpload(targetDoc);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-50 text-[#6366F1] hover:bg-indigo-100 border border-indigo-100 rounded-xl text-[12px] font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Ganti / Upload Ulang Dokumen Ini"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">edit</span>
+                        <span className="hidden sm:inline">Ganti Dokumen</span>
+                      </button>
+
+                      {/* Download Button */}
+                      <button
+                        onClick={() => handleDownloadDocument(selectedDocForPreview.fileUrl, selectedDocForPreview.fileName || selectedDocForPreview.name)}
+                        className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 rounded-xl text-[12px] font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Unduh File Ke Komputer"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">download</span>
+                        <span className="hidden sm:inline">Unduh</span>
+                      </button>
+
+                      {/* Cancel Upload / Delete Attachment Button */}
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Batalkan upload berkas "${selectedDocForPreview.name}"? Status akan dikembalikan ke Belum Ada.`)) {
+                            handleUpdateChecklistStatus(selectedDocForPreview.id, 'Belum Ada');
+                            setSelectedDocForPreview(null);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-xl text-[12px] font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Batalkan Upload / Hapus Lampiran Ini"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">cancel</span>
+                        <span className="hidden sm:inline">Batal Upload</span>
+                      </button>
+                    </>
+                  )}
+
+                  {/* Close Modal Button */}
+                  <button
+                    onClick={() => setSelectedDocForPreview(null)}
+                    className="w-9 h-9 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 hover:bg-slate-200 flex items-center justify-center transition-colors cursor-pointer ml-1"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Toolbar Controls for Images (Zoom In, Zoom Out, Rotate, Fit) */}
+              {selectedDocForPreview.fileUrl && isImageFile(selectedDocForPreview.fileUrl, selectedDocForPreview.fileName) && (
+                <div className="py-2.5 px-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[12px] font-bold text-slate-600 shrink-0 gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 font-extrabold uppercase mr-1">Zoom:</span>
+                    <button
+                      onClick={() => setZoomScale(prev => Math.max(0.4, prev - 0.25))}
+                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 transition-all cursor-pointer active:scale-95"
+                      title="Perkecil (Zoom Out)"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">zoom_out</span>
+                    </button>
+
+                    <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[12px] font-black text-[#6366F1] min-w-[54px] text-center">
+                      {Math.round(zoomScale * 100)}%
+                    </span>
+
+                    <button
+                      onClick={() => setZoomScale(prev => Math.min(3, prev + 0.25))}
+                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 transition-all cursor-pointer active:scale-95"
+                      title="Perbesar (Zoom In)"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">zoom_in</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setZoomScale(1);
+                        setRotationAngle(0);
+                      }}
+                      className="px-2.5 h-8 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center gap-1 text-[11.5px] text-slate-600 font-bold transition-all cursor-pointer"
+                      title="Reset Zoom & Putar"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+                      <span>Reset</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setRotationAngle(prev => (prev + 90) % 360)}
+                      className="px-3 h-8 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center gap-1 text-[11.5px] text-slate-700 font-bold transition-all cursor-pointer"
+                      title="Putar Gambar 90 Derajat"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">rotate_right</span>
+                      <span>Putar 90°</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Content Viewer Canvas */}
+              <div className="flex-1 bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-4 flex items-center justify-center min-h-[350px] overflow-auto relative my-4 custom-scrollbar">
+                {(previewResolvedUrl || selectedDocForPreview.fileUrl) ? (
+                  isImageFile(previewResolvedUrl || selectedDocForPreview.fileUrl, selectedDocForPreview.fileName) ? (
+                    <div 
+                      onClick={() => {
+                        const targetUrl = previewResolvedUrl || selectedDocForPreview.fileUrl;
+                        if (targetUrl) {
+                          window.open(targetUrl, '_blank');
+                        }
+                      }}
+                      className="flex flex-col items-center justify-center w-full h-full min-h-[320px] overflow-auto custom-scrollbar p-2 cursor-pointer group"
+                      title="Klik untuk membuka gambar ukuran penuh di Tab Baru"
+                    >
+                      <div className="relative overflow-hidden rounded-xl shadow-lg border border-slate-200/80 group">
+                        <img 
+                          src={previewResolvedUrl || selectedDocForPreview.fileUrl} 
+                          alt={selectedDocForPreview.name}
+                          style={{
+                            transform: `scale(${zoomScale}) rotate(${rotationAngle}deg)`,
+                            transition: 'transform 0.2s ease-out'
+                          }}
+                          className="max-h-[60vh] max-w-full object-contain select-none transition-transform group-hover:scale-[1.01]"
+                          onError={(e) => {
+                            console.error('Image load failed');
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-slate-900/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white pointer-events-none p-4 text-center">
+                          <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mb-2 shadow-md">
+                            <span className="material-symbols-outlined text-[28px]">open_in_new</span>
+                          </div>
+                          <span className="text-[12.5px] font-extrabold tracking-wide drop-shadow-md">Klik untuk Buka Gambar Penuh di Tab Baru</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (previewResolvedUrl || selectedDocForPreview.fileUrl).toLowerCase().includes('.pdf') || (selectedDocForPreview.fileName && selectedDocForPreview.fileName.toLowerCase().endsWith('.pdf')) ? (
+                    <div className="w-full h-[65vh] flex flex-col items-center justify-between">
+                      <iframe 
+                        src={previewResolvedUrl || selectedDocForPreview.fileUrl} 
+                        className="w-full h-full rounded-xl border border-slate-200 shadow-sm" 
+                        title={selectedDocForPreview.name}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-sm bg-white border border-slate-200 rounded-2xl p-7 text-center shadow-sm space-y-4">
+                      <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-[#6366F1] flex items-center justify-center mx-auto shadow-xs">
+                        <span className="material-symbols-outlined text-[36px]">description</span>
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-[15px] text-slate-800">{selectedDocForPreview.fileName || selectedDocForPreview.name}</h4>
+                        <p className="text-[12px] text-slate-500 font-medium mt-1">Berkas lampiran dokumen fisik tersedia dan siap diunduh.</p>
+                      </div>
+                      <div className="flex flex-col gap-2 pt-2">
+                        <button
+                          onClick={() => handleDownloadDocument(previewResolvedUrl || selectedDocForPreview.fileUrl, selectedDocForPreview.fileName || selectedDocForPreview.name)}
+                          className="w-full py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl font-bold text-[13px] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">download</span>
+                          <span>Unduh Berkas Ini</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
                 ) : (
-                  /* General Document Render */
-                  <div className="w-[300px] h-[200px] bg-white border border-outline-variant shadow rounded-lg p-4 flex flex-col justify-between text-on-surface select-none">
-                    <div className="border-b pb-2 flex justify-between items-center">
-                      <div className="flex items-center gap-1 text-primary">
-                        <span className="material-symbols-outlined text-[18px]">description</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">{selectedDocForPreview.name}</span>
-                      </div>
-                      <span className="px-2 py-0.5 bg-secondary-container text-on-secondary-container rounded text-[7px] font-bold">VERIFIED</span>
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 rounded-3xl bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-300">
+                      <span className="material-symbols-outlined text-[36px]">folder_open</span>
                     </div>
-                    <div className="flex-1 flex flex-col justify-center gap-2 py-4">
-                      <div className="w-full h-2 bg-surface-container-high rounded"></div>
-                    </div>
-                    <div className="text-[8px] text-on-surface-variant font-medium flex justify-between border-t pt-2">
-                      <span>Dokumen Digital Berlisensi</span>
-                      <span>Tgl Diterima: {new Date().toLocaleDateString('id-ID')}</span>
-                    </div>
+                    <h4 className="font-extrabold text-slate-700 text-[15px]">Berkas Belum Diunggah</h4>
+                    <p className="text-[12.5px] text-slate-400 mt-1 max-w-xs">
+                      Dokumen fisik ini belum dilampirkan. Klik tombol 'Ganti / Upload Dokumen' untuk mengunggah berkas.
+                    </p>
+                    <button
+                      onClick={() => {
+                        const targetDoc = selectedDocForPreview;
+                        setSelectedDocForPreview(null);
+                        setSelectedDocForUpload(targetDoc);
+                      }}
+                      className="mt-4 px-4 py-2 bg-indigo-50 text-[#6366F1] border border-indigo-100 hover:bg-indigo-100 rounded-xl font-bold text-[12.5px] transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
+                      <span>Upload Dokumen Sekarang</span>
+                    </button>
                   </div>
                 )}
               </div>
 
-              <div className="mt-6 flex justify-end">
+              {/* Modal Footer Controls */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 shrink-0">
+                {(previewResolvedUrl || selectedDocForPreview.fileUrl) ? (
+                  <a
+                    href={previewResolvedUrl || selectedDocForPreview.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-xl font-bold text-[12.5px] flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                    <span>Buka Gambar Penuh di Tab Baru</span>
+                  </a>
+                ) : <div />}
+
                 <button
                   onClick={() => setSelectedDocForPreview(null)}
-                  className="px-6 py-2 bg-primary text-on-primary rounded-lg font-label-bold hover:opacity-90 transition-all text-[13px]"
+                  className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-[13px] transition-colors cursor-pointer"
                 >
-                  Tutup Pratinjau
+                  Tutup
                 </button>
               </div>
             </div>
@@ -1908,7 +2076,7 @@ export const DocumentDetailPage = () => {
                         );
                         const fileData = {
                           name: uploadRes.name || uploadFile.name,
-                          url: uploadRes.path || uploadRes.url
+                          url: uploadRes.url || uploadRes.path
                         };
                         handleUpdateChecklistStatus(selectedDocForUpload.id, 'Perlu Verifikasi', fileData);
                         toast.success('Dokumen fisik berhasil diunggah!');
@@ -1959,16 +2127,48 @@ export const DocumentDetailPage = () => {
 
               <div className="bg-surface-container-low border border-outline-variant rounded-lg p-4 flex flex-col items-center justify-center min-h-[300px] relative">
                 {selectedDocForReview.fileUrl ? (
-                  isImageFile(selectedDocForReview.fileUrl, selectedDocForReview.fileName) ? (
+                  isImageFile(reviewResolvedUrl || selectedDocForReview.fileUrl, selectedDocForReview.fileName) ? (
                     <div className="flex flex-col items-center gap-3 w-full">
-                      <img 
-                        src={selectedDocForReview.fileUrl} 
-                        className="max-h-[260px] max-w-full object-contain rounded-lg border border-outline-variant shadow-sm"
-                        alt="Pratinjau Dokumen"
-                      />
-                      <p className="text-[11px] text-on-surface-variant font-medium truncate w-full text-center">
-                        File: {selectedDocForReview.fileName}
-                      </p>
+                      <div 
+                        onClick={() => {
+                          const targetUrl = reviewResolvedUrl || selectedDocForReview.fileUrl;
+                          if (targetUrl) {
+                            window.open(targetUrl, '_blank');
+                          }
+                        }}
+                        className="relative overflow-hidden rounded-xl border border-slate-200/90 shadow-md cursor-pointer group bg-slate-50 flex items-center justify-center max-h-[300px] w-full"
+                        title="Klik untuk membuka gambar ukuran penuh di Tab Baru"
+                      >
+                        <img 
+                          src={reviewResolvedUrl || selectedDocForReview.fileUrl} 
+                          className="max-h-[280px] max-w-full object-contain transition-transform group-hover:scale-[1.02]"
+                          alt="Pratinjau Dokumen"
+                        />
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-3 text-center pointer-events-none">
+                          <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mb-1.5 shadow-sm">
+                            <span className="material-symbols-outlined text-[24px]">open_in_new</span>
+                          </div>
+                          <span className="text-[12px] font-extrabold tracking-wide drop-shadow-md">Klik untuk Buka Gambar Penuh di Tab Baru</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between w-full px-1">
+                        <p className="text-[11px] text-on-surface-variant font-medium truncate max-w-[240px]">
+                          File: {selectedDocForReview.fileName}
+                        </p>
+                        <button
+                          onClick={() => {
+                            const targetUrl = reviewResolvedUrl || selectedDocForReview.fileUrl;
+                            if (targetUrl) {
+                              window.open(targetUrl, '_blank');
+                            }
+                          }}
+                          className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                          <span>Buka Tab Baru</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center p-6 bg-white border border-outline-variant rounded-lg shadow-sm w-full max-w-[320px] text-center">
@@ -1976,7 +2176,7 @@ export const DocumentDetailPage = () => {
                       <p className="text-[12.5px] font-bold text-on-surface truncate w-full">{selectedDocForReview.fileName || 'Dokumen PDF'}</p>
                       <p className="text-[10px] text-on-surface-variant mt-1 leading-normal">Dokumen ini bertipe PDF. Klik tombol di bawah untuk membukanya.</p>
                       <a 
-                        href={selectedDocForReview.fileUrl} 
+                        href={reviewResolvedUrl || selectedDocForReview.fileUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
                         className="mt-4 px-4 py-2 bg-primary text-white text-[11px] font-bold rounded-lg hover:opacity-90 transition-all flex items-center gap-1.5 shadow-sm"
@@ -2032,65 +2232,7 @@ export const DocumentDetailPage = () => {
           </div>
         )}
 
-        {/* === MODAL: CONFIRM SUBMIT / COMPLETE CASE === */}
-        {showSubmitModal && (
-          <div className="fixed inset-0 bg-inverse-surface/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white border border-outline-variant rounded-xl w-full max-w-sm p-6 relative shadow-xl text-center animate-in fade-in zoom-in-95 duration-200">
-              <button
-                onClick={() => setShowSubmitModal(false)}
-                className="absolute top-4 right-4 text-on-surface-variant hover:text-on-surface transition-colors"
-              >
-                <span className="material-symbols-outlined text-[24px]">close</span>
-              </button>
 
-              {submitSuccess ? (
-                <div className="py-6 animate-in zoom-in duration-300">
-                  <span className="material-symbols-outlined text-[64px] text-secondary mb-3 animate-bounce">
-                    check_circle
-                  </span>
-                  <h3 className="font-bold text-on-surface text-[18px] mb-2">Proses Selesai!</h3>
-                  <p className="text-[13px] text-on-surface-variant font-semibold">
-                    Status berkas berhasil diubah menjadi "Selesai".
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-primary text-[48px] mb-3">
-                    task_alt
-                  </span>
-                  <h3 className="font-bold text-on-surface text-[16px] mb-2">Selesaikan Berkas?</h3>
-                  <p className="text-[13px] text-on-surface-variant mb-6 leading-relaxed font-medium">
-                    Apakah Anda yakin ingin menyelesaikan pemrosesan berkas ini? Tindakan ini akan mengubah status pengerjaan menjadi <strong>Selesai (100%)</strong>.
-                  </p>
-
-                  {receivedCount < totalCount && (
-                    <div className="bg-error-container/20 border border-error-container rounded-lg p-3 text-left mb-6 flex gap-2.5 items-start">
-                      <span className="material-symbols-outlined text-error text-[18px] shrink-0">warning</span>
-                      <p className="text-error text-[11px] font-bold leading-normal">
-                        Peringatan: Ada {totalCount - receivedCount} dokumen persyaratan yang belum lengkap! Tetap lanjutkan?
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowSubmitModal(false)}
-                      className="flex-1 py-2.5 border border-outline-variant rounded-lg text-[13px] font-bold hover:bg-surface-container-low transition-colors"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      onClick={handleSubmitCase}
-                      className="flex-1 py-2.5 bg-primary text-on-primary rounded-lg text-[13px] font-bold hover:opacity-90 transition-all shadow-md"
-                    >
-                      Ya, Selesaikan
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* === MODAL: SHARE TRACKING LINK === */}
         {showShareModal && (
@@ -2221,11 +2363,17 @@ export const DocumentDetailPage = () => {
               <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
                 {/* Biaya Akta */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                    Biaya Akta (Rupiah)
-                  </label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                      Biaya Akta (Rupiah)
+                    </label>
+                    {!isOwner && (
+                      <span className="text-[10px] text-amber-600 font-semibold">(Khusus Notaris Utama)</span>
+                    )}
+                  </div>
                   <CurrencyInput
                     value={editFees}
+                    disabled={!isOwner}
                     onChange={(val) => {
                       setEditFees(val);
                       if (editPaidAmount >= val && val > 0) {
@@ -2236,18 +2384,24 @@ export const DocumentDetailPage = () => {
                         setEditPaymentStatus('Belum Lunas');
                       }
                     }}
-                    className="w-full bg-[#F8F9FA] border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] text-on-surface focus:outline-none font-semibold"
+                    className={`w-full border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] focus:outline-none font-semibold ${!isOwner ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-[#F8F9FA] text-on-surface'}`}
                     placeholder="Contoh: 12.000.000"
                   />
                 </div>
 
                 {/* Nominal Dibayar */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                    Nominal Dibayar (Rupiah)
-                  </label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                      Nominal Dibayar (Rupiah)
+                    </label>
+                    {!isOwner && (
+                      <span className="text-[10px] text-amber-600 font-semibold">(Khusus Notaris Utama)</span>
+                    )}
+                  </div>
                   <CurrencyInput
                     value={editPaidAmount}
+                    disabled={!isOwner}
                     onChange={(val) => {
                       setEditPaidAmount(val);
                       if (val >= editFees && editFees > 0) {
@@ -2258,20 +2412,26 @@ export const DocumentDetailPage = () => {
                         setEditPaymentStatus('Belum Lunas');
                       }
                     }}
-                    className="w-full bg-[#F8F9FA] border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] text-on-surface focus:outline-none font-semibold"
+                    className={`w-full border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] focus:outline-none font-semibold ${!isOwner ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-[#F8F9FA] text-on-surface'}`}
                     placeholder="Contoh: 5.000.000"
                   />
                 </div>
 
                 {/* Status Pembayaran */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                    Status Pembayaran
-                  </label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                      Status Pembayaran
+                    </label>
+                    {!isOwner && (
+                      <span className="text-[10px] text-amber-600 font-semibold">(Khusus Notaris Utama)</span>
+                    )}
+                  </div>
                   <select
                     value={editPaymentStatus}
+                    disabled={!isOwner}
                     onChange={(e) => setEditPaymentStatus(e.target.value)}
-                    className="w-full bg-[#F8F9FA] border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] text-on-surface focus:outline-none font-bold"
+                    className={`w-full border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] focus:outline-none font-bold ${!isOwner ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-[#F8F9FA] text-on-surface'}`}
                   >
                     <option value="Belum Lunas">Belum Lunas</option>
                     <option value="DP">DP (Down Payment)</option>
@@ -2284,12 +2444,10 @@ export const DocumentDetailPage = () => {
                   <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
                     Lokasi Objek
                   </label>
-                  <input
-                    type="text"
+                  <LocationSearchInput
                     value={editLocation}
-                    onChange={(e) => setEditLocation(e.target.value)}
-                    className="w-full bg-[#F8F9FA] border border-outline-variant rounded-lg px-3 py-2 text-[12.5px] text-on-surface focus:outline-none"
-                    placeholder="Contoh: Jakarta Selatan"
+                    onChange={setEditLocation}
+                    placeholder="Contoh: Cafe Koa, Jakarta Selatan..."
                   />
                 </div>
 
@@ -2347,6 +2505,232 @@ export const DocumentDetailPage = () => {
                   className="flex-1 py-2 bg-primary text-on-primary rounded-lg text-[12.5px] font-bold hover:opacity-90 transition-all shadow-md"
                 >
                   Simpan Perubahan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* === MODAL: KELOLA CICILAN & PEMBAYARAN === */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-[24px] w-full max-w-2xl p-6 sm:p-7 relative shadow-2xl text-left animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
+                    <span className="material-symbols-outlined text-[24px]">payments</span>
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[18px] text-slate-800 tracking-tight">
+                      Kelola Cicilan & Pembayaran
+                    </h3>
+                    <p className="text-[12.5px] text-slate-500 font-medium">
+                      {activeCase.clientName} &bull; #{activeCase.caseNumber}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="overflow-y-auto py-4 space-y-6 flex-1 pr-1 custom-scrollbar">
+                
+                {/* 4-Grid Financial Summary Cards */}
+                {(() => {
+                  const totalFees = Number(activeCase.fees || 0);
+                  const totalPaid = Number(activeCase.paidAmount || 0);
+                  const remaining = Math.max(0, totalFees - totalPaid);
+                  const percentage = totalFees > 0 ? Math.min(100, Math.round((totalPaid / totalFees) * 100)) : (totalPaid > 0 ? 100 : 0);
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                          <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">Total Biaya Akta</p>
+                          <p className="text-[15px] font-black text-slate-800 mt-1">Rp {totalFees.toLocaleString('id-ID')}</p>
+                        </div>
+                        <div className="bg-emerald-50/60 p-3.5 rounded-2xl border border-emerald-200/60">
+                          <p className="text-[10.5px] font-bold text-emerald-600 uppercase tracking-wider">Total Terbayar</p>
+                          <p className="text-[15px] font-black text-emerald-700 mt-1">Rp {totalPaid.toLocaleString('id-ID')}</p>
+                        </div>
+                        <div className={`p-3.5 rounded-2xl border ${remaining === 0 && totalFees > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50/60 border-rose-200/60'}`}>
+                          <p className={`text-[10.5px] font-bold uppercase tracking-wider ${remaining === 0 && totalFees > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Sisa Tagihan</p>
+                          <p className={`text-[15px] font-black mt-1 ${remaining === 0 && totalFees > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Rp {remaining.toLocaleString('id-ID')}</p>
+                        </div>
+                        <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-200/60">
+                          <p className="text-[10.5px] font-bold text-indigo-600 uppercase tracking-wider">Status Pelunasan</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className={`px-2 py-0.5 rounded-md text-[11px] font-black uppercase ${
+                              activeCase.paymentStatus === 'Lunas'
+                                ? 'bg-emerald-600 text-white'
+                                : activeCase.paymentStatus === 'DP' || activeCase.paymentStatus === 'DP / Cicilan'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-rose-600 text-white'
+                            }`}>
+                              {activeCase.paymentStatus || 'Belum Lunas'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Visual Progress Bar */}
+                      <div className="bg-slate-100 p-3.5 rounded-2xl border border-slate-200/70">
+                        <div className="flex justify-between items-center text-[12px] font-bold text-slate-700 mb-1.5">
+                          <span className="flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[16px] text-emerald-600">donut_large</span>
+                            Progres Pembayaran Cicilan
+                          </span>
+                          <span className="text-emerald-700 font-extrabold">{percentage}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden p-0.5">
+                          <div 
+                            className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Form Input Record New Installment */}
+                <form onSubmit={handleRecordPayment} className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/90 space-y-4">
+                  <h4 className="font-extrabold text-[14px] text-slate-800 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-emerald-600">add_card</span>
+                    Tambah Pembayaran / Cicilan Baru
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Nominal */}
+                    <div className="sm:col-span-1 space-y-1 text-left">
+                      <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">
+                        Nominal (Rp)
+                      </label>
+                      <CurrencyInput
+                        value={newPaymentAmount}
+                        onChange={(val) => setNewPaymentAmount(val)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-extrabold text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                        placeholder="Contoh: 2.000.000"
+                        required
+                      />
+                    </div>
+
+                    {/* Catatan / Keterangan */}
+                    <div className="sm:col-span-1 space-y-1 text-left">
+                      <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">
+                        Keterangan / Catatan
+                      </label>
+                      <input
+                        type="text"
+                        value={newPaymentNote}
+                        onChange={(e) => setNewPaymentNote(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                        placeholder="Contoh: DP 2 Juta, Cicilan 2, Pelunasan..."
+                      />
+                    </div>
+
+                    {/* Tanggal Bayar */}
+                    <div className="sm:col-span-1 space-y-1 text-left">
+                      <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">
+                        Tanggal Bayar
+                      </label>
+                      <input
+                        type="date"
+                        value={newPaymentDate}
+                        onChange={(e) => setNewPaymentDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[12.5px] font-extrabold transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                      <span>Catat Pembayaran</span>
+                    </button>
+                  </div>
+                </form>
+
+                {/* History Table */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold text-[14px] text-slate-800 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px] text-indigo-600">history</span>
+                      Riwayat Cicilan Pembayaran
+                    </h4>
+                    <span className="text-[11px] text-slate-500 font-bold bg-slate-100 px-2.5 py-0.5 rounded-full">
+                      {(activeCase.paymentHistory || []).length} Transaksi
+                    </span>
+                  </div>
+
+                  {(!activeCase.paymentHistory || activeCase.paymentHistory.length === 0) ? (
+                    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-400">
+                      <span className="material-symbols-outlined text-[36px] mb-1 text-slate-300">receipt_long</span>
+                      <p className="text-[13px] font-semibold">Belum ada riwayat cicilan pembayaran recorded.</p>
+                      <p className="text-[11.5px] text-slate-400 mt-0.5">Gunakan formulir di atas untuk mencatat pembayaran pertama.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">
+                      <table className="w-full text-left text-[12.5px]">
+                        <thead className="bg-slate-50 text-slate-500 font-extrabold text-[10.5px] uppercase tracking-wider border-b border-slate-200">
+                          <tr>
+                            <th className="py-3 px-4">Tgl Bayar</th>
+                            <th className="py-3 px-4">Nominal</th>
+                            <th className="py-3 px-4">Keterangan</th>
+                            <th className="py-3 px-4">Pemeriksa</th>
+                            <th className="py-3 px-4 text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {activeCase.paymentHistory.map((item, idx) => (
+                            <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-4 font-semibold text-slate-700 whitespace-nowrap">
+                                {formatDate(item.date)}
+                              </td>
+                              <td className="py-3 px-4 font-black text-emerald-600 whitespace-nowrap">
+                                Rp {Number(item.amount || 0).toLocaleString('id-ID')}
+                              </td>
+                              <td className="py-3 px-4 font-medium text-slate-600">
+                                {item.note || '-'}
+                              </td>
+                              <td className="py-3 px-4 font-semibold text-slate-500 text-[11.5px] whitespace-nowrap">
+                                {item.recordedBy || 'Staf'}
+                              </td>
+                              <td className="py-3 px-4 text-center whitespace-nowrap">
+                                <button
+                                  onClick={() => handleRemovePaymentEntry(item.id)}
+                                  className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all inline-flex items-center justify-center cursor-pointer"
+                                  title="Hapus Catatan Pembayaran Ini"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-4 border-t border-slate-100 flex justify-end shrink-0">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[12.5px] font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  Tutup
                 </button>
               </div>
             </div>
